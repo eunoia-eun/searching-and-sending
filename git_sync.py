@@ -65,10 +65,11 @@ def pull():
         logger.warning("git reset 실패: %s", r.stderr)
 
 
-def push(message: str):
+def push(message: str, rel_paths: list[str] | None = None):
     if not ENABLED:
         return
-    _run(["git", "add", _SETTINGS_REL_PATH], cwd=SYNC_DIR)
+    for rel_path in (rel_paths or [_SETTINGS_REL_PATH]):
+        _run(["git", "add", rel_path], cwd=SYNC_DIR)
     diff = _run(["git", "diff", "--cached", "--quiet"], cwd=SYNC_DIR)
     if diff.returncode == 0:
         return  # 변경 없음

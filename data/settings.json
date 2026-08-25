@@ -73,5 +73,7 @@
   "recipients": [
     "dma3022@gmail.com",
     "dms3022@naver.com"
-  ]
+  ],
+  "schedule_hour": 13,
+  "schedule_minute": 0
 }

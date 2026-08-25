@@ -16,6 +16,8 @@ from flask import Flask, redirect, request, session, url_for
 from markupsafe import escape
 
 import config
+import git_sync
+import schedule_store
 import settings_store
 
 app = Flask(__name__)
@@ -149,6 +151,19 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
       <button type="submit">추가</button>
     </form>
   </div>
+
+  <h2>자동 실행 시각</h2>
+  <div class="card">
+    <p class="hint" style="margin-top:0;">
+      매일 이 시각(한국 시간 기준)에 크롤링·분석·발송이 자동 실행됩니다.
+      {schedule_note}
+    </p>
+    <form method="post" action="/schedule/set" style="display:flex;gap:8px;align-items:center;">
+      <input type="time" name="time" value="{schedule_value}" required
+             style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+      <button type="submit" style="background:#1565c0;color:white;padding:8px 16px;">저장</button>
+    </form>
+  </div>
 </div>
 </body>
 </html>"""
@@ -235,9 +250,18 @@ def _render():
     else:
         recipients_html = '<p class="empty">등록된 발송 대상 이메일 없음</p>'
 
+    hour, minute = settings_store.get_schedule()
+    schedule_value = f"{hour:02d}:{minute:02d}"
+    schedule_note = (
+        "" if git_sync.ENABLED else
+        "(로컬 실행 중이라 이 변경은 GitHub에 자동 반영되지 않습니다 — 클라우드에 배포된 페이지에서 바꿔주세요)"
+    )
+
     return PAGE_TEMPLATE.format(
         sites_html=sites_html,
         recipients_html=recipients_html,
+        schedule_value=schedule_value,
+        schedule_note=schedule_note,
     )
 
 
@@ -333,6 +357,21 @@ def exclude_remove():
     keyword = request.form.get("keyword", "")
     if site in config.SITES:
         settings_store.remove_exclude_keyword(site, keyword)
+    return redirect("/")
+
+
+@app.route("/schedule/set", methods=["POST"])
+def schedule_set():
+    time_str = request.form.get("time", "")
+    try:
+        hour_str, minute_str = time_str.split(":")
+        hour, minute = int(hour_str), int(minute_str)
+        assert 0 <= hour <= 23 and 0 <= minute <= 59
+    except (ValueError, AssertionError):
+        return redirect("/")
+
+    settings_store.set_schedule(hour, minute)
+    schedule_store.apply(hour, minute)
     return redirect("/")
 
 

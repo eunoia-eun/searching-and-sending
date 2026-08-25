@@ -30,6 +30,8 @@ DEFAULT_SETTINGS = {
     "keywords": {},  # {site_key: [keyword, ...]} — 포함 키워드. 없는 사이트/빈 리스트 = 필터 없음(전체 통과)
     "exclude_keywords": {},  # {site_key: [keyword, ...]} — 제외 키워드. 하나라도 포함되면 무조건 걸러짐
     "recipients": None,  # None = 아직 커스터마이즈 안 함 -> config.EMAIL_RECIPIENTS 사용
+    "schedule_hour": 13,   # 매일 자동 실행 시각(KST), .github/workflows/daily.yml과 별개 저장
+    "schedule_minute": 0,
 }
 
 
@@ -105,6 +107,19 @@ def remove_keyword(site_key: str, keyword: str):
     site_list = data["keywords"].get(site_key, [])
     if keyword in site_list:
         site_list.remove(keyword)
+    _save(data)
+
+
+def get_schedule() -> tuple[int, int]:
+    """(시, 분) — KST 기준."""
+    data = _load()
+    return data["schedule_hour"], data["schedule_minute"]
+
+
+def set_schedule(hour: int, minute: int):
+    data = _load()
+    data["schedule_hour"] = hour
+    data["schedule_minute"] = minute
     _save(data)
 
 
