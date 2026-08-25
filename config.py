@@ -71,4 +71,9 @@ SITES = {
         "base_url": "https://kiha21.or.kr",
         "crawler": "KihaCrawler",
     },
+    "mpm": {
+        "name": "인사혁신처",
+        "base_url": "https://www.mpm.go.kr",
+        "crawler": "MpmCrawler",
+    },
 }

@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 # 국가법령정보 오픈 API (별도 인증키 없이 이용 가능한 간이 조회)
 BASE_URL = "https://www.law.go.kr"
 SEARCH_API = "https://www.law.go.kr/DRF/lawSearch.do"
+LAW_SERVICE_API = "https://www.law.go.kr/DRF/lawService.do"
 DETAIL_URL = "https://www.law.go.kr/lsInfoP.do"
 
 # 모니터링 대상 법령 (법령명: 법령 일련번호)
@@ -86,5 +87,26 @@ class LawCrawler(BaseCrawler):
         return items
 
     def fetch_notice_content(self, item: NoticeItem) -> str:
-        # 검색 API 응답만으로 요약 정보를 구성했으므로 별도 본문 수집 불필요
+        """
+        법령 상세 API에서 '제개정이유'(무엇이 왜 바뀌었는지 공식 요약문)를 가져온다.
+        실패 시 목록 조회 때 만든 메타데이터 요약으로 대체.
+        """
+        mst = item.notice_id.rsplit("_", 1)[-1]
+        try:
+            resp = self.get(LAW_SERVICE_API, params={
+                "OC": "open",
+                "target": "law",
+                "MST": mst,
+                "type": "XML",
+            })
+            resp.encoding = "utf-8"
+            soup = self.soup(resp.text, parser="lxml-xml")
+            reason = soup.find("제개정이유내용")
+            if reason:
+                text = self.clean_text(reason.get_text())
+                if text:
+                    return text
+        except Exception as e:
+            logger.warning("[%s] 제개정이유 수집 실패 (MST=%s): %s", self.site_name, mst, e)
+
         return item.content or ""

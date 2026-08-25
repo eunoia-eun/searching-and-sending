@@ -8,6 +8,7 @@ import smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from html import escape
 
 import config
 import settings_store
@@ -15,8 +16,13 @@ from db import database
 
 logger = logging.getLogger(__name__)
 
-_IMPORTANCE_COLOR = {"High": "#c0392b", "Medium": "#e67e22", "Low": "#7f8c8d"}
-_IMPORTANCE_LABEL = {"High": "긴급", "Medium": "중요", "Low": "참고"}
+# 중요도별 배지 색상/라벨/이모지 (색 하나에만 의존하지 않도록 이모지 병행)
+_IMPORTANCE_META = {
+    "High":   {"color": "#dc2626", "bg": "#fef2f2", "label": "긴급", "emoji": "🔴"},
+    "Medium": {"color": "#d97706", "bg": "#fffbeb", "label": "중요", "emoji": "🟠"},
+    "Low":    {"color": "#6b7280", "bg": "#f9fafb", "label": "참고", "emoji": "⚪"},
+}
+_IMPORTANCE_ORDER = ["High", "Medium", "Low"]
 
 
 def _parse_points(raw) -> list[str]:
@@ -28,63 +34,103 @@ def _parse_points(raw) -> list[str]:
         return [raw] if raw else []
 
 
-def _build_html(notices: list[dict]) -> str:
-    date_str = datetime.now().strftime("%Y년 %m월 %d일")
-    cards = ""
-    for n in notices:
-        importance = n.get("importance", "Medium")
-        color = _IMPORTANCE_COLOR.get(importance, "#7f8c8d")
-        label = _IMPORTANCE_LABEL.get(importance, importance)
-        site_name = config.SITES.get(n["site_key"], {}).get("name", n["site_key"])
-        points = _parse_points(n.get("summary_points"))
-        points_html = "".join(
-            f'<li style="margin-bottom:4px;">{p}</li>' for p in points
-        )
-        action = n.get("action_required") or "해당 없음"
+def _build_card(n: dict) -> str:
+    meta = _IMPORTANCE_META.get(n.get("importance"), _IMPORTANCE_META["Medium"])
+    site_name = config.SITES.get(n["site_key"], {}).get("name", n["site_key"])
+    points = _parse_points(n.get("summary_points"))
+    # summary_points[0]은 항상 "무엇이 바뀌었나" — 나머지(적용대상/시행시기)와 분리해서 강조
+    key_change = escape(str(points[0])) if points else ""
+    rest_points = points[1:]
+    points_html = "".join(
+        f'<li style="margin-bottom:5px;">{escape(str(p))}</li>' for p in rest_points
+    )
+    action = escape(n.get("action_required") or "해당 없음")
+    category = escape(n.get("category") or "")
+    title = escape(n.get("title") or "")
+    posted_at = escape(n.get("posted_at") or "-")
+    url = escape(n.get("url") or "#", quote=True)
 
-        cards += f"""
-        <div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:18px;overflow:hidden;">
-          <div style="background:{color};padding:10px 16px;display:flex;align-items:center;gap:10px;">
-            <span style="background:white;color:{color};font-weight:700;font-size:11px;
-                  padding:2px 8px;border-radius:10px;white-space:nowrap;">{label}</span>
-            <span style="color:white;font-weight:700;font-size:14px;line-height:1.4;">
-              {n['title']}
-            </span>
-          </div>
-          <div style="padding:14px 16px;background:white;">
-            <p style="margin:0 0 8px;color:#888;font-size:12px;">
-              {site_name} &nbsp;|&nbsp; {n.get('category', '')} &nbsp;|&nbsp;
-              게시일: {n.get('posted_at') or '-'}
+    return f"""
+        <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;
+                    margin-bottom:14px;overflow:hidden;">
+          <div style="padding:16px 18px;">
+            <div style="margin-bottom:10px;">
+              <span style="display:inline-block;background:{meta['bg']};color:{meta['color']};
+                    font-weight:700;font-size:11px;padding:3px 10px;border-radius:20px;
+                    margin-right:6px;white-space:nowrap;">{meta['emoji']} {meta['label']}</span>
+              <span style="display:inline-block;background:#f3f4f6;color:#4b5563;
+                    font-size:11px;padding:3px 10px;border-radius:20px;white-space:nowrap;">{category}</span>
+            </div>
+            <h3 style="margin:0 0 8px;font-size:15px;color:#111827;line-height:1.5;font-weight:700;">
+              {title}
+            </h3>
+            <div style="background:#eff6ff;border-left:3px solid #2563eb;border-radius:4px;
+                 padding:9px 12px;margin:0 0 10px;font-size:13px;color:#1e3a8a;
+                 font-weight:700;line-height:1.5;">
+              📌 {key_change}
+            </div>
+            <p style="margin:0 0 10px;color:#9ca3af;font-size:12px;">
+              {escape(site_name)} · 게시일 {posted_at}
             </p>
-            <ul style="margin:0 0 10px;padding-left:18px;font-size:13px;color:#333;">
+            <ul style="margin:0 0 12px;padding-left:20px;color:#374151;font-size:13px;line-height:1.7;">
               {points_html}
             </ul>
-            <div style="padding:8px 12px;background:#fffde7;border-left:3px solid #f9a825;
-                 font-size:13px;color:#333;margin-bottom:8px;">
-              <strong>조치 필요:</strong> {action}
+            <div style="background:#f9fafb;border-radius:8px;padding:10px 12px;margin-bottom:14px;
+                 font-size:13px;color:#374151;line-height:1.5;">
+              <span style="color:#111827;font-weight:700;">✅ 조치 필요</span><br>{action}
             </div>
-            <a href="{n['url']}" style="color:#1565c0;font-size:12px;text-decoration:none;">
-              원문 보기 &rarr;
-            </a>
+            <a href="{url}" style="display:inline-block;background:#1e3a8a;color:#ffffff;
+               font-size:12px;font-weight:700;padding:9px 18px;border-radius:6px;
+               text-decoration:none;">원문 보기 &rarr;</a>
           </div>
         </div>"""
+
+
+def _build_html(notices: list[dict]) -> str:
+    date_str = datetime.now().strftime("%Y년 %m월 %d일")
+
+    groups: dict[str, list[dict]] = {k: [] for k in _IMPORTANCE_ORDER}
+    for n in notices:
+        importance = n.get("importance")
+        groups[importance if importance in groups else "Medium"].append(n)
+
+    sections = ""
+    for importance in _IMPORTANCE_ORDER:
+        items = groups[importance]
+        if not items:
+            continue
+        meta = _IMPORTANCE_META[importance]
+        sections += f"""
+        <div style="margin:22px 0 10px;font-size:13px;font-weight:700;color:{meta['color']};">
+          {meta['emoji']} {meta['label']} ({len(items)}건)
+        </div>"""
+        sections += "".join(_build_card(n) for n in items)
 
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="font-family:'Malgun Gothic','맑은 고딕',Arial,sans-serif;
-             background:#f0f2f5;margin:0;padding:20px;">
-  <div style="max-width:680px;margin:0 auto;background:white;border-radius:12px;
-              padding:28px 32px;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-    <h2 style="margin:0 0 4px;color:#1a237e;font-size:20px;">건강검진 공지 모니터링</h2>
-    <p style="margin:0 0 24px;color:#666;font-size:13px;">
-      {date_str} &nbsp;·&nbsp; 신규 {len(notices)}건
-    </p>
-    {cards}
-    <hr style="border:none;border-top:1px solid #eee;margin:20px 0 14px;">
-    <p style="color:#bbb;font-size:11px;text-align:center;margin:0;">
-      본 메일은 자동 발송되었습니다.
-    </p>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic','맑은 고딕',Arial,sans-serif;
+             background:#eef1f5;margin:0;padding:20px;">
+  <div style="max-width:640px;margin:0 auto;">
+    <div style="background:#1e3a8a;border-radius:12px 12px 0 0;padding:22px 28px;">
+      <h1 style="margin:0 0 4px;color:#ffffff;font-size:18px;font-weight:700;">
+        🏥 건강검진 공지 모니터링
+      </h1>
+      <p style="margin:0;color:#c7d2fe;font-size:12px;">
+        {date_str} · 신규 {len(notices)}건
+      </p>
+    </div>
+    <div style="background:#ffffff;padding:20px 24px 8px;border-left:1px solid #e5e7eb;
+                border-right:1px solid #e5e7eb;">
+      {sections}
+    </div>
+    <div style="background:#ffffff;border-radius:0 0 12px 12px;padding:16px 24px 22px;
+                border:1px solid #e5e7eb;border-top:none;">
+      <hr style="border:none;border-top:1px solid #f0f0f0;margin:0 0 14px;">
+      <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0;">
+        본 메일은 자동 발송되었습니다.
+      </p>
+    </div>
   </div>
 </body>
 </html>"""
@@ -104,10 +150,7 @@ def send_notification(notices: list[dict]) -> bool:
         logger.warning("이메일 설정 누락 — 발송 건너뜀 (EMAIL_SENDER, 발송 대상 이메일 확인)")
         return False
 
-    subject = (
-        f"[건강검진 공지] {datetime.now().strftime('%Y-%m-%d')} "
-        f"신규 {len(notices)}건"
-    )
+    subject = f"[공지] 건강검진 업데이트 - 건강의학부 ({datetime.now().strftime('%Y-%m-%d')})"
     html = _build_html(notices)
 
     msg = MIMEMultipart("alternative")

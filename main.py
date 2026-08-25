@@ -23,6 +23,7 @@ from crawlers.law_crawler import LawCrawler
 from crawlers.khhi_crawler import KhhiCrawler
 from crawlers.kahp_crawler import KahpCrawler
 from crawlers.kiha_crawler import KihaCrawler
+from crawlers.mpm_crawler import MpmCrawler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +44,7 @@ ALL_CRAWLERS = {
     "khhi": KhhiCrawler,
     "kahp": KahpCrawler,
     "kiha": KihaCrawler,
+    "mpm":  MpmCrawler,
 }
 
 

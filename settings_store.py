@@ -15,7 +15,7 @@ import config
 SETTINGS_PATH = "./data/settings.json"
 
 DEFAULT_SETTINGS = {
-    "enabled_sites": ["nhis", "moel", "hira", "kdca", "law", "khhi", "kahp", "kiha"],
+    "enabled_sites": ["nhis", "moel", "hira", "kdca", "law", "khhi", "kahp", "kiha", "mpm"],
     "keywords": [],
     "recipients": None,  # None = 아직 커스터마이즈 안 함 -> config.EMAIL_RECIPIENTS 사용
 }
