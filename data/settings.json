@@ -70,7 +70,9 @@
   "exclude_keywords": {
     "mpm": []
   },
-  "recipients": [],
+  "recipients": [
+    "dms3022@naver.com"
+  ],
   "schedule_hour": 8,
   "schedule_minute": 0
 }
