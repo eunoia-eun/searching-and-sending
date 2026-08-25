@@ -13,8 +13,17 @@ import json
 import os
 
 import config
+import git_sync
 
 SETTINGS_PATH = "./data/settings.json"
+
+
+def _resolve_path() -> str:
+    """CLOUD_SYNC 환경(클라우드에 배포된 admin_web.py)에서는 GitHub에서 동기화한
+    경로를, 그 외(로컬 실행, GitHub Actions)에서는 로컬 경로를 사용한다."""
+    if git_sync.ENABLED:
+        return git_sync.ensure_ready()
+    return SETTINGS_PATH
 
 DEFAULT_SETTINGS = {
     "enabled_sites": ["nhis", "moel", "hira", "kdca", "law", "khhi", "kahp", "kiha", "mpm"],
@@ -24,10 +33,12 @@ DEFAULT_SETTINGS = {
 
 
 def _load() -> dict:
-    if not os.path.exists(SETTINGS_PATH):
+    git_sync.pull()
+    path = _resolve_path()
+    if not os.path.exists(path):
         data = dict(DEFAULT_SETTINGS)
     else:
-        with open(SETTINGS_PATH, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     merged = {**DEFAULT_SETTINGS, **data}
 
@@ -44,9 +55,11 @@ def _load() -> dict:
 
 
 def _save(data: dict):
-    os.makedirs(os.path.dirname(SETTINGS_PATH) or ".", exist_ok=True)
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+    path = _resolve_path()
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    git_sync.push("관리자 페이지에서 설정 변경 [skip ci]")
 
 
 def get_enabled_sites() -> list[str]:

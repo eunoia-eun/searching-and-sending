@@ -1,8 +1,13 @@
 """
 관리자 웹 페이지 — 크롤링 대상 사이트 / 관심 키워드 관리
-실행: run_admin.bat 더블클릭 (또는 python admin_web.py)
-브라우저에서 http://127.0.0.1:5050 자동으로 열림
+
+로컬 실행: run_admin.bat 더블클릭 (또는 python admin_web.py)
+           브라우저에서 http://127.0.0.1:5050 자동으로 열림
+클라우드 배포: CLOUD_SYNC=true 등 환경변수가 설정된 상태로 실행되면
+              0.0.0.0에 바인딩하고(PORT 환경변수 사용) waitress로 서빙,
+              설정은 git_sync를 통해 GitHub 저장소와 동기화됨
 """
+import os
 import secrets
 import threading
 import webbrowser
@@ -14,9 +19,13 @@ import config
 import settings_store
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)  # 서버 재시작 시 기존 로그인 세션은 만료됨
+# SECRET_KEY를 환경변수로 고정하면 배포 환경이 재시작돼도 로그인 세션이 유지됨.
+# 없으면(로컬 실행) 매번 새로 생성 — 로컬은 재시작이 잦지 않아 무방.
+app.secret_key = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 
-PORT = 5050
+IS_CLOUD = os.getenv("CLOUD_SYNC", "").lower() == "true"
+HOST = "0.0.0.0" if IS_CLOUD else "127.0.0.1"
+PORT = int(os.getenv("PORT", "5050"))
 
 LOGIN_TEMPLATE = """<!DOCTYPE html>
 <html lang="ko">
@@ -289,7 +298,12 @@ def recipient_remove():
 
 
 if __name__ == "__main__":
-    url = f"http://127.0.0.1:{PORT}"
-    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    print(f"관리자 페이지: {url}  (이 창을 닫으면 서버가 종료됩니다)")
-    app.run(host="127.0.0.1", port=PORT, debug=False)
+    if IS_CLOUD:
+        from waitress import serve
+        print(f"관리자 페이지(클라우드 모드) — 0.0.0.0:{PORT}")
+        serve(app, host=HOST, port=PORT)
+    else:
+        url = f"http://127.0.0.1:{PORT}"
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        print(f"관리자 페이지: {url}  (이 창을 닫으면 서버가 종료됩니다)")
+        app.run(host=HOST, port=PORT, debug=False)
