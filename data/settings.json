@@ -63,10 +63,12 @@
       "특수건강",
       "건강진단",
       "검진",
-      "채용",
       "신체검사",
       "특수검진"
     ]
+  },
+  "exclude_keywords": {
+    "mpm": []
   },
   "recipients": [
     "dma3022@gmail.com",

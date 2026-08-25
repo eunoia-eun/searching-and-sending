@@ -27,7 +27,8 @@ def _resolve_path() -> str:
 
 DEFAULT_SETTINGS = {
     "enabled_sites": ["nhis", "moel", "hira", "kdca", "law", "khhi", "kahp", "kiha", "mpm"],
-    "keywords": {},  # {site_key: [keyword, ...]} — 사이트별 필터. 없는 사이트/빈 리스트 = 필터 없음
+    "keywords": {},  # {site_key: [keyword, ...]} — 포함 키워드. 없는 사이트/빈 리스트 = 필터 없음(전체 통과)
+    "exclude_keywords": {},  # {site_key: [keyword, ...]} — 제외 키워드. 하나라도 포함되면 무조건 걸러짐
     "recipients": None,  # None = 아직 커스터마이즈 안 함 -> config.EMAIL_RECIPIENTS 사용
 }
 
@@ -107,6 +108,33 @@ def remove_keyword(site_key: str, keyword: str):
     _save(data)
 
 
+def get_exclude_keywords(site_key: str) -> list[str]:
+    return list(_load()["exclude_keywords"].get(site_key, []))
+
+
+def get_all_exclude_keywords() -> dict[str, list[str]]:
+    return _load()["exclude_keywords"]
+
+
+def add_exclude_keyword(site_key: str, keyword: str):
+    keyword = keyword.strip()
+    if not keyword:
+        return
+    data = _load()
+    site_list = data["exclude_keywords"].setdefault(site_key, [])
+    if keyword not in site_list:
+        site_list.append(keyword)
+    _save(data)
+
+
+def remove_exclude_keyword(site_key: str, keyword: str):
+    data = _load()
+    site_list = data["exclude_keywords"].get(site_key, [])
+    if keyword in site_list:
+        site_list.remove(keyword)
+    _save(data)
+
+
 def get_recipients() -> list[str]:
     recipients = _load()["recipients"]
     if recipients is None:
@@ -140,9 +168,15 @@ def remove_recipient(email: str):
 
 
 def matches_keywords(site_key: str, title: str, content: str) -> bool:
-    """해당 사이트에 키워드 미등록 시 항상 통과. 등록된 키워드가 하나라도 제목/본문에 포함되면 통과."""
+    """제외 키워드가 하나라도 포함되면 무조건 걸러짐(포함 키워드 매치 여부와 무관).
+    그 다음 포함 키워드 미등록 시 항상 통과, 등록돼 있으면 하나라도 포함되어야 통과."""
+    text = f"{title} {content or ''}".lower()
+
+    exclude_keywords = get_exclude_keywords(site_key)
+    if any(kw.lower() in text for kw in exclude_keywords):
+        return False
+
     keywords = get_keywords(site_key)
     if not keywords:
         return True
-    text = f"{title} {content or ''}".lower()
     return any(kw.lower() in text for kw in keywords)

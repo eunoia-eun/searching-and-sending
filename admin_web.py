@@ -77,6 +77,8 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
              padding: 5px 8px 5px 12px; font-size: 13px; margin: 4px 6px 4px 0; }}
   .kw-tag button {{ background: #1565c0; color: white; border-radius: 50%;
                      width: 18px; height: 18px; padding: 0; line-height: 1; font-size: 12px; }}
+  .kw-tag-exclude {{ background: #fdecea; color: #c62828; }}
+  .kw-tag-exclude button {{ background: #c62828; }}
   form.inline {{ display: inline; }}
   .add-form {{ margin-top: 12px; display: flex; gap: 8px; }}
   .add-form input[type=text] {{ flex: 1; padding: 8px 10px; border: 1px solid #ddd;
@@ -109,8 +111,10 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   /* 키워드 서브 영역 — 사이트명과 명확히 구분되도록 배경/들여쓰기 */
   .kw-box {{ margin-top: 12px; padding: 10px 12px; background: #f7f8fa;
              border-radius: 8px; }}
+  .kw-box + .kw-box {{ margin-top: 8px; }}
   .kw-label {{ font-size: 11px; font-weight: 700; color: #9199a3; letter-spacing: .3px;
                text-transform: uppercase; margin-bottom: 6px; }}
+  .kw-label-exclude {{ color: #c62828; }}
   .kw-add-mini {{ margin-top: 6px; display: flex; gap: 6px; }}
   .kw-add-mini input[type=text] {{ flex: 1; padding: 6px 10px; border: 1px solid #ddd;
                                     border-radius: 6px; font-size: 12px; }}
@@ -153,6 +157,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 def _render():
     enabled = set(settings_store.get_enabled_sites())
     all_keywords = settings_store.get_all_keywords()
+    all_excludes = settings_store.get_all_exclude_keywords()
 
     sites_html = ""
     for key, meta in config.SITES.items():
@@ -175,6 +180,18 @@ def _render():
         if not tags_html:
             tags_html = '<p class="empty" style="margin:0;">필터 없음 (전체 수집)</p>'
 
+        site_excludes = all_excludes.get(key, [])
+        exclude_tags_html = "".join(f"""
+              <span class="kw-tag kw-tag-exclude">{escape(kw)}
+                <form class="inline" method="post" action="/exclude/remove">
+                  <input type="hidden" name="site" value="{key}">
+                  <input type="hidden" name="keyword" value="{escape(kw)}">
+                  <button type="submit" title="삭제">&times;</button>
+                </form>
+              </span>""" for kw in site_excludes)
+        if not exclude_tags_html:
+            exclude_tags_html = '<p class="empty" style="margin:0;">없음</p>'
+
         sites_html += f"""
         <div class="{card_class}">
           <div class="site-head">
@@ -185,11 +202,20 @@ def _render():
             </form>
           </div>
           <div class="kw-box">
-            <div class="kw-label">관심 키워드</div>
+            <div class="kw-label">관심 키워드 (하나라도 포함되면 수집)</div>
             <div>{tags_html}</div>
             <form class="kw-add-mini" method="post" action="/keyword/add">
               <input type="hidden" name="site" value="{key}">
               <input type="text" name="keyword" placeholder="키워드 추가" required>
+              <button type="submit">추가</button>
+            </form>
+          </div>
+          <div class="kw-box">
+            <div class="kw-label kw-label-exclude">제외 키워드 (하나라도 포함되면 무조건 제외)</div>
+            <div>{exclude_tags_html}</div>
+            <form class="kw-add-mini" method="post" action="/exclude/add">
+              <input type="hidden" name="site" value="{key}">
+              <input type="text" name="keyword" placeholder="제외 키워드 추가" required>
               <button type="submit">추가</button>
             </form>
           </div>
@@ -289,6 +315,24 @@ def keyword_remove():
     keyword = request.form.get("keyword", "")
     if site in config.SITES:
         settings_store.remove_keyword(site, keyword)
+    return redirect("/")
+
+
+@app.route("/exclude/add", methods=["POST"])
+def exclude_add():
+    site = request.form.get("site", "")
+    keyword = request.form.get("keyword", "")
+    if site in config.SITES:
+        settings_store.add_exclude_keyword(site, keyword)
+    return redirect("/")
+
+
+@app.route("/exclude/remove", methods=["POST"])
+def exclude_remove():
+    site = request.form.get("site", "")
+    keyword = request.form.get("keyword", "")
+    if site in config.SITES:
+        settings_store.remove_exclude_keyword(site, keyword)
     return redirect("/")
 
 
