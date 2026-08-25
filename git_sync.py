@@ -37,7 +37,11 @@ def ensure_ready() -> str:
     """동기화용 로컬 클론을 준비하고, settings.json의 절대경로를 반환."""
     if not os.path.isdir(os.path.join(SYNC_DIR, ".git")):
         os.makedirs(SYNC_DIR, exist_ok=True)
-        r = _run(["git", "clone", "--depth", "1", _REMOTE_URL, SYNC_DIR], timeout=60)
+        r = _run(
+            ["git", "clone", "--depth", "1", "--single-branch", "--branch", "main",
+             _REMOTE_URL, SYNC_DIR],
+            timeout=60,
+        )
         if r.returncode != 0:
             logger.error("git clone 실패: %s", r.stderr)
         _run(["git", "config", "user.name", "admin-web-bot"], cwd=SYNC_DIR)
@@ -46,12 +50,19 @@ def ensure_ready() -> str:
 
 
 def pull():
+    """읽기 전 항상 원격 main의 최신 상태로 맞춘다 (rebase 없이 fetch + hard reset —
+    얕은 클론에서 rebase가 브랜치를 못 찾는 문제를 피하기 위함).
+    이 디렉터리는 settings.json 동기화 전용이라 로컬 커밋되지 않은 변경이 없다는 전제."""
     if not ENABLED:
         return
     ensure_ready()
-    r = _run(["git", "pull", "--rebase", "origin", "main"], cwd=SYNC_DIR)
+    r = _run(["git", "fetch", "--depth", "1", "origin", "main"], cwd=SYNC_DIR)
     if r.returncode != 0:
-        logger.warning("git pull 실패: %s", r.stderr)
+        logger.warning("git fetch 실패: %s", r.stderr)
+        return
+    r = _run(["git", "reset", "--hard", "origin/main"], cwd=SYNC_DIR)
+    if r.returncode != 0:
+        logger.warning("git reset 실패: %s", r.stderr)
 
 
 def push(message: str):
@@ -62,6 +73,19 @@ def push(message: str):
     if diff.returncode == 0:
         return  # 변경 없음
     _run(["git", "commit", "-m", message], cwd=SYNC_DIR)
-    r = _run(["git", "push", "origin", "main"], cwd=SYNC_DIR)
+
+    r = _run(["git", "push", "origin", "HEAD:main"], cwd=SYNC_DIR)
+    if r.returncode == 0:
+        return
+
+    # 그 사이 원격이 앞서갔을 수 있음 — 최신을 받아 우리 커밋만 그 위에 다시 얹어서 재시도
+    logger.warning("git push 실패, 재시도: %s", r.stderr)
+    _run(["git", "fetch", "--depth", "1", "origin", "main"], cwd=SYNC_DIR)
+    rb = _run(["git", "rebase", "origin/main"], cwd=SYNC_DIR)
+    if rb.returncode != 0:
+        logger.error("git rebase 실패, 동기화 포기: %s", rb.stderr)
+        _run(["git", "rebase", "--abort"], cwd=SYNC_DIR)
+        return
+    r = _run(["git", "push", "origin", "HEAD:main"], cwd=SYNC_DIR)
     if r.returncode != 0:
-        logger.warning("git push 실패: %s", r.stderr)
+        logger.error("git push 재시도 실패: %s", r.stderr)
