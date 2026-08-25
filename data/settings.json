@@ -70,9 +70,7 @@
   "exclude_keywords": {
     "mpm": []
   },
-  "recipients": [
-    "dma3022@gmail.com"
-  ],
+  "recipients": [],
   "schedule_hour": 8,
   "schedule_minute": 0
 }
