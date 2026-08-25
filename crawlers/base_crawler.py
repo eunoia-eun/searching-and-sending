@@ -27,9 +27,6 @@ class NoticeItem:
 class BaseCrawler(ABC):
     site_key: str = ""
     site_name: str = ""
-    # settings_store 키워드 필터 적용 여부. law_crawler처럼 이미 자체 검색어로
-    # 범위를 좁혀 수집하는 크롤러는 False로 오버라이드한다.
-    apply_keyword_filter: bool = True
 
     def __init__(self):
         self.session = requests.Session()
@@ -84,7 +81,7 @@ class BaseCrawler(ABC):
                     logger.warning("[%s] 본문 수집 실패 (%s): %s", self.site_name, item.url, e)
                     content = ""
 
-                if self.apply_keyword_filter and not settings_store.matches_keywords(item.title, content):
+                if not settings_store.matches_keywords(self.site_key, item.title, content):
                     logger.info("[%s] 키워드 필터 제외: %s", self.site_name, item.title)
                     continue
 

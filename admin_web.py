@@ -82,6 +82,14 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .add-form button {{ background: #1565c0; color: white; padding: 8px 16px; }}
   .hint {{ color: #999; font-size: 12px; margin-top: 10px; }}
   .empty {{ color: #999; font-size: 13px; }}
+  .kw-site {{ padding: 12px 0; border-bottom: 1px solid #f0f0f0; }}
+  .kw-site:last-child {{ border-bottom: none; padding-bottom: 0; }}
+  .kw-site:first-child {{ padding-top: 0; }}
+  .kw-site-name {{ font-size: 13px; font-weight: 700; color: #333; margin-bottom: 6px; }}
+  .kw-add-mini {{ margin-top: 6px; display: flex; gap: 6px; }}
+  .kw-add-mini input[type=text] {{ flex: 1; padding: 6px 10px; border: 1px solid #ddd;
+                                    border-radius: 6px; font-size: 12px; }}
+  .kw-add-mini button {{ background: #1565c0; color: white; padding: 6px 12px; }}
 </style>
 </head>
 <body>
@@ -97,17 +105,14 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     {sites_html}
   </div>
 
-  <h2>관심 키워드 필터</h2>
+  <h2>사이트별 관심 키워드 필터</h2>
   <div class="card">
     <p class="hint" style="margin-top:0;">
-      제목이나 본문에 아래 키워드가 하나라도 포함된 공지만 수집합니다.
-      키워드가 하나도 없으면 필터 없이 전체 공지를 수집합니다.
+      사이트마다 자주 쓰는 단어가 달라서 키워드를 사이트별로 따로 관리합니다.
+      제목/본문에 그 사이트의 키워드가 하나라도 포함된 공지만 수집하고,
+      키워드가 하나도 없는 사이트는 필터 없이 전체 공지를 수집합니다.
     </p>
     {keywords_html}
-    <form class="add-form" method="post" action="/keyword/add">
-      <input type="text" name="keyword" placeholder="예: 검진, 특수건강진단" required>
-      <button type="submit">추가</button>
-    </form>
   </div>
 
   <h2>발송 대상 이메일</h2>
@@ -144,19 +149,32 @@ def _render():
           </form>
         </div>"""
 
-    keywords = settings_store.get_keywords()
-    if keywords:
-        keywords_html = ""
-        for kw in keywords:
-            keywords_html += f"""
-            <span class="kw-tag">{escape(kw)}
-              <form class="inline" method="post" action="/keyword/remove">
-                <input type="hidden" name="keyword" value="{escape(kw)}">
-                <button type="submit" title="삭제">&times;</button>
-              </form>
-            </span>"""
-    else:
-        keywords_html = '<p class="empty">등록된 키워드 없음 (전체 공지 수집 중)</p>'
+    all_keywords = settings_store.get_all_keywords()
+    keywords_html = ""
+    for key, meta in config.SITES.items():
+        name = meta.get("name", key)
+        site_keywords = all_keywords.get(key, [])
+        tags_html = "".join(f"""
+              <span class="kw-tag">{escape(kw)}
+                <form class="inline" method="post" action="/keyword/remove">
+                  <input type="hidden" name="site" value="{key}">
+                  <input type="hidden" name="keyword" value="{escape(kw)}">
+                  <button type="submit" title="삭제">&times;</button>
+                </form>
+              </span>""" for kw in site_keywords)
+        if not tags_html:
+            tags_html = '<p class="empty" style="margin:0;">필터 없음 (전체 수집)</p>'
+
+        keywords_html += f"""
+        <div class="kw-site">
+          <div class="kw-site-name">{escape(name)}<span class="site-key">{escape(key)}</span></div>
+          <div>{tags_html}</div>
+          <form class="kw-add-mini" method="post" action="/keyword/add">
+            <input type="hidden" name="site" value="{key}">
+            <input type="text" name="keyword" placeholder="키워드 추가" required>
+            <button type="submit">추가</button>
+          </form>
+        </div>"""
 
     recipients = settings_store.get_recipients()
     if recipients:
@@ -240,15 +258,19 @@ def site_disable():
 
 @app.route("/keyword/add", methods=["POST"])
 def keyword_add():
+    site = request.form.get("site", "")
     keyword = request.form.get("keyword", "")
-    settings_store.add_keyword(keyword)
+    if site in config.SITES:
+        settings_store.add_keyword(site, keyword)
     return redirect("/")
 
 
 @app.route("/keyword/remove", methods=["POST"])
 def keyword_remove():
+    site = request.form.get("site", "")
     keyword = request.form.get("keyword", "")
-    settings_store.remove_keyword(keyword)
+    if site in config.SITES:
+        settings_store.remove_keyword(site, keyword)
     return redirect("/")
 
 

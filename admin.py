@@ -5,9 +5,9 @@
   python admin.py site list
   python admin.py site enable hira
   python admin.py site disable nhis
-  python admin.py keyword list
-  python admin.py keyword add 건강검진
-  python admin.py keyword remove 건강검진
+  python admin.py keyword list hira
+  python admin.py keyword add hira 적정성평가
+  python admin.py keyword remove hira 적정성평가
   python admin.py recipient list
   python admin.py recipient add someone@example.com
   python admin.py recipient remove someone@example.com
@@ -42,22 +42,29 @@ def cmd_site_disable(args):
 
 
 def cmd_keyword_list(args):
-    keywords = settings_store.get_keywords()
-    if not keywords:
-        print("등록된 키워드 없음 (필터 없이 전체 공지 수집)")
-        return
-    for kw in keywords:
-        print(f"- {kw}")
+    if args.site:
+        keywords = settings_store.get_keywords(args.site)
+        if not keywords:
+            print("등록된 키워드 없음 (필터 없이 전체 공지 수집)")
+            return
+        for kw in keywords:
+            print(f"- {kw}")
+    else:
+        all_kw = settings_store.get_all_keywords()
+        for key in ALL_CRAWLERS:
+            name = config.SITES.get(key, {}).get("name", key)
+            kws = all_kw.get(key, [])
+            print(f"{key:6s} {name:16s} {', '.join(kws) if kws else '(필터 없음)'}")
 
 
 def cmd_keyword_add(args):
-    settings_store.add_keyword(args.keyword)
-    print(f"추가됨: {args.keyword}")
+    settings_store.add_keyword(args.site, args.keyword)
+    print(f"[{args.site}] 추가됨: {args.keyword}")
 
 
 def cmd_keyword_remove(args):
-    settings_store.remove_keyword(args.keyword)
-    print(f"삭제됨: {args.keyword}")
+    settings_store.remove_keyword(args.site, args.keyword)
+    print(f"[{args.site}] 삭제됨: {args.keyword}")
 
 
 def cmd_recipient_list(args):
@@ -96,16 +103,20 @@ def main():
     p.add_argument("site", choices=list(ALL_CRAWLERS.keys()))
     p.set_defaults(func=cmd_site_disable)
 
-    kw_parser = sub.add_parser("keyword", help="관심 키워드 관리 (제목/본문에 하나라도 포함된 공지만 수집)")
+    kw_parser = sub.add_parser("keyword", help="사이트별 관심 키워드 관리 (제목/본문에 하나라도 포함된 공지만 수집)")
     kw_sub = kw_parser.add_subparsers(dest="action", required=True)
 
-    kw_sub.add_parser("list", help="키워드 목록 조회").set_defaults(func=cmd_keyword_list)
+    p = kw_sub.add_parser("list", help="키워드 목록 조회 (사이트 생략 시 전체 사이트 요약)")
+    p.add_argument("site", nargs="?", choices=list(ALL_CRAWLERS.keys()))
+    p.set_defaults(func=cmd_keyword_list)
 
-    p = kw_sub.add_parser("add", help="키워드 추가")
+    p = kw_sub.add_parser("add", help="특정 사이트에 키워드 추가")
+    p.add_argument("site", choices=list(ALL_CRAWLERS.keys()))
     p.add_argument("keyword")
     p.set_defaults(func=cmd_keyword_add)
 
-    p = kw_sub.add_parser("remove", help="키워드 삭제")
+    p = kw_sub.add_parser("remove", help="특정 사이트에서 키워드 삭제")
+    p.add_argument("site", choices=list(ALL_CRAWLERS.keys()))
     p.add_argument("keyword")
     p.set_defaults(func=cmd_keyword_remove)
 

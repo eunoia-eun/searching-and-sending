@@ -1,9 +1,11 @@
 """
-사용자 설정 저장소 — 크롤링 대상 사이트, 관심 키워드 필터, 발송 대상 이메일
+사용자 설정 저장소 — 크롤링 대상 사이트, 사이트별 관심 키워드 필터, 발송 대상 이메일
 
 admin.py / admin_web.py로 관리하며, main.py/scheduler.py는 별도 --sites 지정이
-없으면 여기 저장된 enabled_sites를 사용한다. base_crawler.py는 keywords로
-제목/본문을 필터링한다 (키워드가 비어있으면 필터 없이 전체 통과).
+없으면 여기 저장된 enabled_sites를 사용한다. base_crawler.py는 사이트별 keywords로
+제목/본문을 필터링한다 (그 사이트의 키워드가 비어있으면 필터 없이 전체 통과 —
+사이트마다 자주 쓰는 단어가 달라서(예: hira는 "적정성평가", law는 법령명 자체로
+이미 좁혀짐) 전체 공통 키워드 하나로는 특정 사이트가 통째로 걸러지는 문제가 있었음).
 notifier.py는 recipients를 발송 대상으로 사용한다 (아직 한 번도 수정 안 했으면
 .env의 EMAIL_RECIPIENTS를 초기값으로 사용).
 """
@@ -16,17 +18,29 @@ SETTINGS_PATH = "./data/settings.json"
 
 DEFAULT_SETTINGS = {
     "enabled_sites": ["nhis", "moel", "hira", "kdca", "law", "khhi", "kahp", "kiha", "mpm"],
-    "keywords": [],
+    "keywords": {},  # {site_key: [keyword, ...]} — 사이트별 필터. 없는 사이트/빈 리스트 = 필터 없음
     "recipients": None,  # None = 아직 커스터마이즈 안 함 -> config.EMAIL_RECIPIENTS 사용
 }
 
 
 def _load() -> dict:
     if not os.path.exists(SETTINGS_PATH):
-        return dict(DEFAULT_SETTINGS)
-    with open(SETTINGS_PATH, encoding="utf-8") as f:
-        data = json.load(f)
-    return {**DEFAULT_SETTINGS, **data}
+        data = dict(DEFAULT_SETTINGS)
+    else:
+        with open(SETTINGS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    merged = {**DEFAULT_SETTINGS, **data}
+
+    # 이전 버전(사이트 공통 키워드 리스트) 마이그레이션: 기존 목록을 각 사이트의
+    # 초기 키워드로 복사한다. law는 검색어 자체가 이미 좁혀져 있어 필터 없이 시작.
+    if isinstance(merged.get("keywords"), list):
+        old_list = merged["keywords"]
+        merged["keywords"] = {
+            site: list(old_list) for site in config.SITES if site != "law"
+        }
+        _save(merged)
+
+    return merged
 
 
 def _save(data: dict):
@@ -53,25 +67,31 @@ def disable_site(site_key: str):
         _save(data)
 
 
-def get_keywords() -> list[str]:
-    return list(_load()["keywords"])
+def get_keywords(site_key: str) -> list[str]:
+    return list(_load()["keywords"].get(site_key, []))
 
 
-def add_keyword(keyword: str):
+def get_all_keywords() -> dict[str, list[str]]:
+    return _load()["keywords"]
+
+
+def add_keyword(site_key: str, keyword: str):
     keyword = keyword.strip()
     if not keyword:
         return
     data = _load()
-    if keyword not in data["keywords"]:
-        data["keywords"].append(keyword)
-        _save(data)
+    site_list = data["keywords"].setdefault(site_key, [])
+    if keyword not in site_list:
+        site_list.append(keyword)
+    _save(data)
 
 
-def remove_keyword(keyword: str):
+def remove_keyword(site_key: str, keyword: str):
     data = _load()
-    if keyword in data["keywords"]:
-        data["keywords"].remove(keyword)
-        _save(data)
+    site_list = data["keywords"].get(site_key, [])
+    if keyword in site_list:
+        site_list.remove(keyword)
+    _save(data)
 
 
 def get_recipients() -> list[str]:
@@ -106,9 +126,9 @@ def remove_recipient(email: str):
     _save(data)
 
 
-def matches_keywords(title: str, content: str) -> bool:
-    """키워드 미등록 시 항상 통과. 등록된 키워드가 하나라도 제목/본문에 포함되면 통과."""
-    keywords = get_keywords()
+def matches_keywords(site_key: str, title: str, content: str) -> bool:
+    """해당 사이트에 키워드 미등록 시 항상 통과. 등록된 키워드가 하나라도 제목/본문에 포함되면 통과."""
+    keywords = get_keywords(site_key)
     if not keywords:
         return True
     text = f"{title} {content or ''}".lower()

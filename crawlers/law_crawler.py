@@ -27,8 +27,6 @@ TARGET_LAWS = {
 class LawCrawler(BaseCrawler):
     site_key = "law"
     site_name = "국가법령정보센터"
-    # TARGET_LAWS로 이미 모니터링 대상 법령을 좁혀서 검색하므로 공통 키워드 필터는 적용하지 않음
-    apply_keyword_filter = False
 
     def fetch_notice_list(self) -> list[NoticeItem]:
         items = []
