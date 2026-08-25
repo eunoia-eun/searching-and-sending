@@ -70,15 +70,8 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   h2 {{ font-size: 15px; color: #333; margin: 28px 0 10px; }}
   .card {{ background: white; border-radius: 10px; padding: 18px 20px;
            box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; }}
-  .row {{ display: flex; align-items: center; justify-content: space-between;
-          padding: 8px 0; border-bottom: 1px solid #f0f0f0; }}
-  .row:last-child {{ border-bottom: none; }}
-  .site-name {{ font-size: 14px; }}
-  .site-key {{ color: #999; font-size: 12px; margin-left: 6px; }}
   button {{ border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px;
             cursor: pointer; font-weight: 600; }}
-  .btn-on {{ background: #2e7d32; color: white; }}
-  .btn-off {{ background: #e0e0e0; color: #666; }}
   .kw-tag {{ display: inline-flex; align-items: center; gap: 6px;
              background: #e3f2fd; color: #1565c0; border-radius: 14px;
              padding: 5px 8px 5px 12px; font-size: 13px; margin: 4px 6px 4px 0; }}
@@ -91,12 +84,33 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .add-form button {{ background: #1565c0; color: white; padding: 8px 16px; }}
   .hint {{ color: #999; font-size: 12px; margin-top: 10px; }}
   .empty {{ color: #999; font-size: 13px; }}
-  .kw-site {{ padding: 14px 0; border-bottom: 1px solid #f0f0f0; }}
-  .kw-site:last-child {{ border-bottom: none; padding-bottom: 0; }}
-  .kw-site:first-child {{ padding-top: 0; }}
-  .kw-site-head {{ display: flex; align-items: center; justify-content: space-between;
-                    margin-bottom: 8px; }}
-  .kw-site-name {{ font-size: 14px; font-weight: 700; color: #333; }}
+
+  /* 사이트 카드 */
+  .site-card {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px;
+                margin-bottom: 12px; background: #fff; }}
+  .site-card:last-child {{ margin-bottom: 0; }}
+  .site-card.is-off {{ background: #fafafa; }}
+  .site-head {{ display: flex; align-items: center; justify-content: space-between; }}
+  .site-name {{ font-size: 15px; font-weight: 700; color: #1a1a1a; }}
+  .site-card.is-off .site-name {{ color: #aaa; }}
+  .site-key {{ color: #aaa; font-size: 11px; font-weight: 400; margin-left: 6px; }}
+
+  /* 토글 스위치 (체크박스 없이 버튼 하나로 켜짐/꺼짐 폼을 제출) */
+  .toggle {{ position: relative; width: 42px; height: 24px; border-radius: 12px;
+             padding: 0; flex-shrink: 0; }}
+  .toggle::after {{ content: ""; position: absolute; top: 2px; width: 20px; height: 20px;
+                     border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25);
+                     transition: left .15s ease; }}
+  .toggle-on {{ background: #2e7d32; }}
+  .toggle-on::after {{ left: 20px; }}
+  .toggle-off {{ background: #ccc; }}
+  .toggle-off::after {{ left: 2px; }}
+
+  /* 키워드 서브 영역 — 사이트명과 명확히 구분되도록 배경/들여쓰기 */
+  .kw-box {{ margin-top: 12px; padding: 10px 12px; background: #f7f8fa;
+             border-radius: 8px; }}
+  .kw-label {{ font-size: 11px; font-weight: 700; color: #9199a3; letter-spacing: .3px;
+               text-transform: uppercase; margin-bottom: 6px; }}
   .kw-add-mini {{ margin-top: 6px; display: flex; gap: 6px; }}
   .kw-add-mini input[type=text] {{ flex: 1; padding: 6px 10px; border: 1px solid #ddd;
                                     border-radius: 6px; font-size: 12px; }}
@@ -144,9 +158,10 @@ def _render():
     for key, meta in config.SITES.items():
         name = meta.get("name", key)
         is_on = key in enabled
-        btn_class = "btn-on" if is_on else "btn-off"
-        btn_label = "켜짐" if is_on else "꺼짐"
+        card_class = "site-card" if is_on else "site-card is-off"
+        toggle_class = "toggle toggle-on" if is_on else "toggle toggle-off"
         toggle_action = "/site/disable" if is_on else "/site/enable"
+        toggle_title = "끄기" if is_on else "켜기"
 
         site_keywords = all_keywords.get(key, [])
         tags_html = "".join(f"""
@@ -161,20 +176,23 @@ def _render():
             tags_html = '<p class="empty" style="margin:0;">필터 없음 (전체 수집)</p>'
 
         sites_html += f"""
-        <div class="kw-site">
-          <div class="kw-site-head">
-            <span class="kw-site-name">{escape(name)}<span class="site-key">{escape(key)}</span></span>
+        <div class="{card_class}">
+          <div class="site-head">
+            <span class="site-name">{escape(name)}<span class="site-key">{escape(key)}</span></span>
             <form class="inline" method="post" action="{toggle_action}">
               <input type="hidden" name="site" value="{key}">
-              <button type="submit" class="{btn_class}">{btn_label}</button>
+              <button type="submit" class="{toggle_class}" title="{toggle_title}" aria-label="{toggle_title}"></button>
             </form>
           </div>
-          <div>{tags_html}</div>
-          <form class="kw-add-mini" method="post" action="/keyword/add">
-            <input type="hidden" name="site" value="{key}">
-            <input type="text" name="keyword" placeholder="키워드 추가" required>
-            <button type="submit">추가</button>
-          </form>
+          <div class="kw-box">
+            <div class="kw-label">관심 키워드</div>
+            <div>{tags_html}</div>
+            <form class="kw-add-mini" method="post" action="/keyword/add">
+              <input type="hidden" name="site" value="{key}">
+              <input type="text" name="keyword" placeholder="키워드 추가" required>
+              <button type="submit">추가</button>
+            </form>
+          </div>
         </div>"""
 
     recipients = settings_store.get_recipients()
