@@ -2,7 +2,7 @@ name: 건강검진 공지 자동 크롤링
 
 on:
   schedule:
-    - cron: '0 16 * * *'  # 매일 16:00 UTC = 01:00 KST
+    - cron: '0 23 * * *'  # 매일 23:00 UTC = 08:00 KST
   workflow_dispatch: {}
 
 concurrency:
