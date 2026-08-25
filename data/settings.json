@@ -1,0 +1,25 @@
+{
+  "enabled_sites": [
+    "nhis",
+    "moel",
+    "hira",
+    "kdca",
+    "law",
+    "khhi",
+    "kahp",
+    "kiha"
+  ],
+  "keywords": [
+    "건강검진",
+    "특수건강",
+    "건강진단",
+    "검진",
+    "채용",
+    "신체검사",
+    "특수검진"
+  ],
+  "recipients": [
+    "dma3022@gmail.com",
+    "dms3022@naver.com"
+  ]
+}
