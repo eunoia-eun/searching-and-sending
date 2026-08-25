@@ -91,10 +91,12 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .add-form button {{ background: #1565c0; color: white; padding: 8px 16px; }}
   .hint {{ color: #999; font-size: 12px; margin-top: 10px; }}
   .empty {{ color: #999; font-size: 13px; }}
-  .kw-site {{ padding: 12px 0; border-bottom: 1px solid #f0f0f0; }}
+  .kw-site {{ padding: 14px 0; border-bottom: 1px solid #f0f0f0; }}
   .kw-site:last-child {{ border-bottom: none; padding-bottom: 0; }}
   .kw-site:first-child {{ padding-top: 0; }}
-  .kw-site-name {{ font-size: 13px; font-weight: 700; color: #333; margin-bottom: 6px; }}
+  .kw-site-head {{ display: flex; align-items: center; justify-content: space-between;
+                    margin-bottom: 8px; }}
+  .kw-site-name {{ font-size: 14px; font-weight: 700; color: #333; }}
   .kw-add-mini {{ margin-top: 6px; display: flex; gap: 6px; }}
   .kw-add-mini input[type=text] {{ flex: 1; padding: 6px 10px; border: 1px solid #ddd;
                                     border-radius: 6px; font-size: 12px; }}
@@ -109,19 +111,13 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   </div>
   <p class="hint">여기서 바꾼 설정은 다음 크롤링부터 바로 적용됩니다.</p>
 
-  <h2>크롤링 대상 사이트</h2>
-  <div class="card">
-    {sites_html}
-  </div>
-
-  <h2>사이트별 관심 키워드 필터</h2>
+  <h2>크롤링 대상 사이트 &amp; 키워드 필터</h2>
   <div class="card">
     <p class="hint" style="margin-top:0;">
-      사이트마다 자주 쓰는 단어가 달라서 키워드를 사이트별로 따로 관리합니다.
-      제목/본문에 그 사이트의 키워드가 하나라도 포함된 공지만 수집하고,
-      키워드가 하나도 없는 사이트는 필터 없이 전체 공지를 수집합니다.
+      사이트를 켜고 끄고, 그 아래 제목/본문에 하나라도 포함되면 수집할 키워드를
+      사이트별로 관리합니다. 키워드가 하나도 없으면 필터 없이 전체 공지를 수집합니다.
     </p>
-    {keywords_html}
+    {sites_html}
   </div>
 
   <h2>발송 대상 이메일</h2>
@@ -142,26 +138,16 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 
 def _render():
     enabled = set(settings_store.get_enabled_sites())
+    all_keywords = settings_store.get_all_keywords()
+
     sites_html = ""
     for key, meta in config.SITES.items():
         name = meta.get("name", key)
         is_on = key in enabled
         btn_class = "btn-on" if is_on else "btn-off"
         btn_label = "켜짐" if is_on else "꺼짐"
-        action = "/site/disable" if is_on else "/site/enable"
-        sites_html += f"""
-        <div class="row">
-          <span class="site-name">{escape(name)}<span class="site-key">{escape(key)}</span></span>
-          <form class="inline" method="post" action="{action}">
-            <input type="hidden" name="site" value="{key}">
-            <button type="submit" class="{btn_class}">{btn_label}</button>
-          </form>
-        </div>"""
+        toggle_action = "/site/disable" if is_on else "/site/enable"
 
-    all_keywords = settings_store.get_all_keywords()
-    keywords_html = ""
-    for key, meta in config.SITES.items():
-        name = meta.get("name", key)
         site_keywords = all_keywords.get(key, [])
         tags_html = "".join(f"""
               <span class="kw-tag">{escape(kw)}
@@ -174,9 +160,15 @@ def _render():
         if not tags_html:
             tags_html = '<p class="empty" style="margin:0;">필터 없음 (전체 수집)</p>'
 
-        keywords_html += f"""
+        sites_html += f"""
         <div class="kw-site">
-          <div class="kw-site-name">{escape(name)}<span class="site-key">{escape(key)}</span></div>
+          <div class="kw-site-head">
+            <span class="kw-site-name">{escape(name)}<span class="site-key">{escape(key)}</span></span>
+            <form class="inline" method="post" action="{toggle_action}">
+              <input type="hidden" name="site" value="{key}">
+              <button type="submit" class="{btn_class}">{btn_label}</button>
+            </form>
+          </div>
           <div>{tags_html}</div>
           <form class="kw-add-mini" method="post" action="/keyword/add">
             <input type="hidden" name="site" value="{key}">
@@ -201,7 +193,6 @@ def _render():
 
     return PAGE_TEMPLATE.format(
         sites_html=sites_html,
-        keywords_html=keywords_html,
         recipients_html=recipients_html,
     )
 
