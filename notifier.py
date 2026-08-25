@@ -127,6 +127,15 @@ def _build_html(notices: list[dict]) -> str:
     <div style="background:#ffffff;border-radius:0 0 12px 12px;padding:16px 24px 22px;
                 border:1px solid #e5e7eb;border-top:none;">
       <hr style="border:none;border-top:1px solid #f0f0f0;margin:0 0 14px;">
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;
+                  padding:12px 14px;margin-bottom:12px;">
+        <p style="margin:0;color:#6b7280;font-size:11px;line-height:1.6;">
+          ⚠️ <strong>안내:</strong> 본 메일은 AI를 통한 자동 검색·분석 결과를 참고용으로
+          제공하는 것으로, 정보의 누락·오류 또는 최신성 문제가 있을 수 있습니다.
+          실제 정책 적용, 법령 해석, 업무 처리 등 중요한 의사결정 시에는 반드시 원문 공지사항 및
+          관계 기관을 통해 정확한 내용을 직접 확인하시기 바랍니다.
+        </p>
+      </div>
       <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0;">
         본 메일은 자동 발송되었습니다.
       </p>
