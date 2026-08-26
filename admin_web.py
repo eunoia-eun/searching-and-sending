@@ -15,10 +15,14 @@ import webbrowser
 from flask import Flask, redirect, request, session, url_for
 from markupsafe import escape
 
+import json
+
 import config
 import git_sync
+import mail_archive
 import schedule_store
 import settings_store
+from db import database
 
 app = Flask(__name__)
 # SECRET_KEY를 환경변수로 고정하면 배포 환경이 재시작돼도 로그인 세션이 유지됨.
@@ -135,6 +139,18 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .guide-row {{ padding: 10px 0; border-bottom: 1px solid #f0f0f0; }}
   .guide-row:last-child {{ border-bottom: none; }}
   .guide-label {{ font-weight: 700; font-size: 13px; }}
+
+  /* 발송 이력 */
+  .log-row {{ padding: 12px 0; border-bottom: 1px solid #f0f0f0; }}
+  .log-row:last-child {{ border-bottom: none; }}
+  .log-head {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+  .log-time {{ font-size: 13px; font-weight: 700; color: #1a1a1a; }}
+  .log-badge {{ font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; white-space: nowrap; }}
+  .log-badge-ok {{ background: #dcfce7; color: #16a34a; }}
+  .log-badge-fail {{ background: #fdecea; color: #c62828; }}
+  .log-meta {{ font-size: 12px; color: #666; margin-top: 4px; }}
+  .log-error {{ font-size: 12px; color: #c62828; margin-top: 4px; }}
+  .log-view {{ font-size: 12px; color: #1565c0; font-weight: 600; text-decoration: none; margin-top: 6px; display: inline-block; }}
 </style>
 </head>
 <body>
@@ -149,6 +165,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     <button type="button" class="tab-btn" data-tab="sites" onclick="showTab('sites')">사이트 &amp; 키워드</button>
     <button type="button" class="tab-btn" data-tab="notify" onclick="showTab('notify')">발송 설정</button>
     <button type="button" class="tab-btn" data-tab="guide" onclick="showTab('guide')">판단 기준 안내</button>
+    <button type="button" class="tab-btn" data-tab="history" onclick="showTab('history')">발송 이력</button>
   </div>
 
   <div id="tab-sites" class="tab-panel">
@@ -249,6 +266,17 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
           참고이거나 단순 홍보성이면 발송하지 않습니다.
         </p>
       </div>
+    </div>
+  </div>
+
+  <div id="tab-history" class="tab-panel">
+    <h2>발송 이력</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0;">
+        최근 발송 시도 이력입니다. 성공한 건은 "원본 메일 보기"로 그때 실제 발송된 메일을
+        발송 계정의 Gmail 보낸편지함에서 그대로 가져와 보여줍니다.
+      </p>
+      {email_log_html}
     </div>
   </div>
 </div>
@@ -370,7 +398,55 @@ def _render():
         contact_name=escape(contact["name"]),
         contact_phone=escape(contact["phone"]),
         contact_email=escape(contact["email"]),
+        email_log_html=_render_email_log(),
     )
+
+
+def _render_email_log() -> str:
+    entries = database.get_email_log(limit=50)
+    if not entries:
+        return '<p class="empty">발송 이력이 없습니다.</p>'
+
+    rows = ""
+    for e in entries:
+        ok = bool(e["success"])
+        badge_html = (
+            '<span class="log-badge log-badge-ok">성공</span>' if ok
+            else '<span class="log-badge log-badge-fail">실패</span>'
+        )
+        try:
+            recipients = json.loads(e["recipients"])
+        except (TypeError, ValueError):
+            recipients = []
+        try:
+            breakdown = json.loads(e["site_breakdown"] or "{}")
+        except (TypeError, ValueError):
+            breakdown = {}
+        breakdown_text = ", ".join(
+            f"{config.SITES.get(k, {}).get('name', k)} {v}건" for k, v in breakdown.items()
+        )
+
+        view_html = ""
+        if ok and e.get("message_id"):
+            view_html = (
+                f'<a class="log-view" href="/email_log/{e["id"]}/view" target="_blank">원본 메일 보기 &rarr;</a>'
+            )
+        error_html = f'<p class="log-error">{escape(e["error"])}</p>' if e.get("error") else ""
+
+        rows += f"""
+        <div class="log-row">
+          <div class="log-head">
+            <span class="log-time">{escape(e["sent_at"])}</span>
+            {badge_html}
+          </div>
+          <p class="log-meta" style="margin:4px 0 0;">{escape(e["subject"] or "(제목 없음)")}</p>
+          <p class="log-meta">수신: {escape(", ".join(recipients)) or "-"}</p>
+          <p class="log-meta">{e["notice_count"]}건{" — " + escape(breakdown_text) if breakdown_text else ""}</p>
+          {error_html}
+          {view_html}
+        </div>"""
+
+    return rows
 
 
 @app.before_request
@@ -483,6 +559,22 @@ def schedule_set():
     settings_store.set_weekday_only(weekday_only)
     schedule_store.apply(hour, minute, weekday_only)
     return redirect("/")
+
+
+@app.route("/email_log/<int:entry_id>/view")
+def email_log_view(entry_id):
+    entry = database.get_email_log_entry(entry_id)
+    if not entry or not entry.get("success") or not entry.get("message_id"):
+        return "<p>발송 이력을 찾을 수 없습니다.</p>", 404
+
+    html = mail_archive.fetch_sent_html(entry["message_id"])
+    if not html:
+        return (
+            "<p>Gmail 보낸편지함에서 원본을 찾지 못했습니다. "
+            "보낸편지함에서 삭제됐거나, 발송 계정의 IMAP 접근이 꺼져있을 수 있습니다.</p>",
+            404,
+        )
+    return html
 
 
 @app.route("/contact/set", methods=["POST"])

@@ -50,6 +50,18 @@ def init_db():
                 new_count   INTEGER DEFAULT 0,
                 error       TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS email_log (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                sent_at        TEXT NOT NULL,
+                recipients     TEXT NOT NULL,
+                subject        TEXT NOT NULL,
+                message_id     TEXT,
+                notice_count   INTEGER DEFAULT 0,
+                site_breakdown TEXT,
+                success        INTEGER NOT NULL,
+                error          TEXT
+            );
         """)
         # 기존 DB 호환: notified_at 컬럼이 없으면 추가
         try:
@@ -188,3 +200,50 @@ def log_crawl(site_key: str, started_at: str, finished_at: str, new_count: int, 
             """,
             (site_key, started_at, finished_at, new_count, error),
         )
+
+
+def log_email(
+    sent_at: str,
+    recipients: list[str],
+    subject: str,
+    message_id: Optional[str],
+    notice_count: int,
+    site_breakdown: dict,
+    success: bool,
+    error: str = "",
+):
+    """발송 시도 결과를 기록 — 성공/실패와 무관하게 항상 남긴다 (실패 원인 진단용)."""
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO email_log
+              (sent_at, recipients, subject, message_id, notice_count, site_breakdown, success, error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                sent_at,
+                json.dumps(recipients, ensure_ascii=False),
+                subject,
+                message_id,
+                notice_count,
+                json.dumps(site_breakdown, ensure_ascii=False),
+                1 if success else 0,
+                error,
+            ),
+        )
+
+
+def get_email_log(limit: int = 50) -> list[dict]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM email_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_email_log_entry(entry_id: int) -> Optional[dict]:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM email_log WHERE id=?", (entry_id,)
+        ).fetchone()
+    return dict(row) if row else None

@@ -8,6 +8,7 @@ import smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import make_msgid
 from html import escape
 
 import config
@@ -222,10 +223,19 @@ def _build_html(notices: list[dict]) -> str:
 </html>"""
 
 
+def _site_breakdown(notices: list[dict]) -> dict:
+    counts: dict[str, int] = {}
+    for n in notices:
+        counts[n["site_key"]] = counts.get(n["site_key"], 0) + 1
+    return counts
+
+
 def send_notification(notices: list[dict]) -> bool:
     """
     notices: database.get_unnotified_analyses() 반환값.
     발송 성공 시 각 공지를 mark_notified 처리 후 True 반환.
+    성공/실패 여부와 무관하게 email_log에 발송 이력을 남긴다 (관리자 페이지 발송 이력 탭,
+    실패 원인 진단용 — Message-ID를 남겨서 나중에 Gmail 보낸편지함 원본도 조회 가능).
     """
     if not notices:
         logger.info("발송할 공지 없음")
@@ -234,17 +244,27 @@ def send_notification(notices: list[dict]) -> bool:
     recipients = settings_store.get_recipients()
     if not config.EMAIL_SENDER or not recipients:
         logger.warning("이메일 설정 누락 — 발송 건너뜀 (EMAIL_SENDER, 발송 대상 이메일 확인)")
+        database.log_email(
+            sent_at=datetime.now().isoformat(timespec="seconds"),
+            recipients=recipients, subject="", message_id=None,
+            notice_count=len(notices), site_breakdown=_site_breakdown(notices),
+            success=False, error="이메일 설정 누락 (EMAIL_SENDER/발송 대상 없음)",
+        )
         return False
 
     subject = f"[공지] 건강검진 업데이트 - 건강의학부 ({datetime.now().strftime('%Y-%m-%d')})"
     html = _build_html(notices)
+    message_id = make_msgid(domain="health-notice.local")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = config.EMAIL_SENDER
     msg["To"] = ", ".join(recipients)
+    msg["Message-ID"] = message_id
     msg.attach(MIMEText(html, "html", "utf-8"))
 
+    success = False
+    error_msg = ""
     try:
         with smtplib.SMTP_SSL(config.SMTP_HOST, config.SMTP_PORT) as smtp:
             smtp.login(config.EMAIL_SENDER, config.EMAIL_PASSWORD)
@@ -259,8 +279,21 @@ def send_notification(notices: list[dict]) -> bool:
 
         logger.info("이메일 발송 완료 — %d건 → %s",
                     len(notices), ", ".join(recipients))
-        return True
+        success = True
 
     except Exception as exc:
+        error_msg = str(exc)
         logger.error("이메일 발송 실패: %s", exc)
-        return False
+
+    database.log_email(
+        sent_at=datetime.now().isoformat(timespec="seconds"),
+        recipients=recipients,
+        subject=subject,
+        message_id=message_id,
+        notice_count=len(notices),
+        site_breakdown=_site_breakdown(notices),
+        success=success,
+        error=error_msg,
+    )
+
+    return success
