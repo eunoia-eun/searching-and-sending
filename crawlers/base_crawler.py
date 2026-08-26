@@ -42,17 +42,40 @@ class BaseCrawler(ABC):
         """개별 공지 URL에서 본문 텍스트를 반환."""
 
     # ── 공통 헬퍼 ─────────────────────────────────────────────
+    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """연결 타임아웃/네트워크 오류나 서버 5xx는 최대 config.MAX_RETRIES회까지
+        지수 백오프로 재시도한다 (GitHub Actions 서버에서 국내 사이트 접속이
+        가끔 일시적으로 타임아웃 나는 문제 대응)."""
+        last_exc: Exception = RuntimeError("요청 실패")
+        for attempt in range(config.MAX_RETRIES):
+            try:
+                resp = self.session.request(method, url, timeout=config.REQUEST_TIMEOUT, **kwargs)
+                resp.raise_for_status()
+                time.sleep(config.REQUEST_DELAY)
+                return resp
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                last_exc = e
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response is not None else 0
+                if not (500 <= status < 600):
+                    raise
+                last_exc = e
+
+            if attempt < config.MAX_RETRIES - 1:
+                wait = config.RETRY_BACKOFF_BASE * (2 ** attempt)
+                logger.warning(
+                    "[%s] 요청 실패(%d/%d회), %d초 후 재시도 — %s: %s",
+                    self.site_name, attempt + 1, config.MAX_RETRIES, wait, url, last_exc,
+                )
+                time.sleep(wait)
+
+        raise last_exc
+
     def get(self, url: str, **kwargs) -> requests.Response:
-        resp = self.session.get(url, timeout=config.REQUEST_TIMEOUT, **kwargs)
-        resp.raise_for_status()
-        time.sleep(config.REQUEST_DELAY)
-        return resp
+        return self._request("GET", url, **kwargs)
 
     def post(self, url: str, **kwargs) -> requests.Response:
-        resp = self.session.post(url, timeout=config.REQUEST_TIMEOUT, **kwargs)
-        resp.raise_for_status()
-        time.sleep(config.REQUEST_DELAY)
-        return resp
+        return self._request("POST", url, **kwargs)
 
     def soup(self, html: str, parser: str = "lxml") -> BeautifulSoup:
         return BeautifulSoup(html, parser)

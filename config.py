@@ -26,8 +26,10 @@ DEFAULT_HEADERS = {
     "Accept-Language": "ko-KR,ko;q=0.9",
 }
 
-REQUEST_TIMEOUT = 15  # seconds
+REQUEST_TIMEOUT = 20  # seconds (GitHub Actions 서버 -> 국내 사이트 왕복이 로컬보다 느릴 수 있어 여유를 둠)
 REQUEST_DELAY = 1.5   # seconds between requests (예의 있는 크롤링)
+MAX_RETRIES = 3          # 연결 오류/타임아웃/서버 5xx 발생 시 최대 재시도 횟수
+RETRY_BACKOFF_BASE = 3   # seconds, 재시도 간격은 3초 -> 6초 -> 12초로 증가
 
 # 대상 사이트 메타 정보
 SITES = {
