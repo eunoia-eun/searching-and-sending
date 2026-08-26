@@ -21,6 +21,7 @@ import config
 import git_sync
 import schedule_store
 import settings_store
+import timeutil
 from db import database
 
 app = Flask(__name__)
@@ -150,6 +151,22 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .log-meta {{ font-size: 12px; color: #666; margin-top: 4px; }}
   .log-error {{ font-size: 12px; color: #c62828; margin-top: 4px; }}
   .log-view {{ font-size: 12px; color: #1565c0; font-weight: 600; text-decoration: none; margin-top: 6px; display: inline-block; }}
+
+  /* 공지 이력 검색 */
+  .search-form {{ display: flex; gap: 8px; margin-bottom: 14px; }}
+  .search-form input[type=text] {{ flex: 1; padding: 8px 10px; border: 1px solid #ddd;
+                                    border-radius: 6px; font-size: 13px; }}
+  .search-form select {{ padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }}
+  .search-form button {{ background: #1565c0; color: white; padding: 8px 16px; }}
+  .notice-row {{ padding: 10px 0; border-bottom: 1px solid #f0f0f0; }}
+  .notice-row:last-child {{ border-bottom: none; }}
+  .notice-head {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+  .notice-title {{ font-size: 13px; color: #222; font-weight: 600; }}
+  .notice-badge {{ font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; white-space: nowrap; }}
+  .notice-badge-sent {{ background: #dcfce7; color: #16a34a; }}
+  .notice-badge-unsent {{ background: #f3f4f6; color: #9ca3af; }}
+  .notice-meta {{ font-size: 12px; color: #666; margin-top: 4px; }}
+  .notice-links a {{ font-size: 12px; color: #1565c0; font-weight: 600; text-decoration: none; margin-right: 12px; }}
 </style>
 </head>
 <body>
@@ -165,6 +182,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     <button type="button" class="tab-btn" data-tab="notify" onclick="showTab('notify')">발송 설정</button>
     <button type="button" class="tab-btn" data-tab="guide" onclick="showTab('guide')">판단 기준 안내</button>
     <button type="button" class="tab-btn" data-tab="history" onclick="showTab('history')">발송 이력</button>
+    <button type="button" class="tab-btn" data-tab="notices" onclick="showTab('notices')">공지 이력</button>
   </div>
 
   <div id="tab-sites" class="tab-panel">
@@ -276,6 +294,24 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
         볼 수 있습니다.
       </p>
       {email_log_html}
+    </div>
+  </div>
+
+  <div id="tab-notices" class="tab-panel">
+    <h2>공지 이력</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0;">
+        지금까지 수집한 공지를 제목으로 검색하고, 각 공지가 언제 발송됐는지·원문 링크를 확인합니다.
+      </p>
+      <form class="search-form" method="get" action="/">
+        <input type="text" name="q" placeholder="제목 검색" value="{notice_query}">
+        <select name="site">
+          <option value="">전체 사이트</option>
+          {site_options_html}
+        </select>
+        <button type="submit">검색</button>
+      </form>
+      {notices_html}
     </div>
   </div>
 </div>
@@ -398,7 +434,59 @@ def _render():
         contact_phone=escape(contact["phone"]),
         contact_email=escape(contact["email"]),
         email_log_html=_render_email_log(),
+        notice_query=escape(request.args.get("q", "")),
+        site_options_html=_render_site_options(request.args.get("site", "")),
+        notices_html=_render_notices(),
     )
+
+
+def _render_site_options(selected: str) -> str:
+    options = ""
+    for key, meta in config.SITES.items():
+        sel = "selected" if key == selected else ""
+        options += f'<option value="{key}" {sel}>{escape(meta.get("name", key))}</option>'
+    return options
+
+
+def _render_notices() -> str:
+    query = request.args.get("q", "").strip()
+    site_key = request.args.get("site", "").strip()
+    results = database.search_notices(query=query, site_key=site_key, limit=100)
+
+    if not results:
+        return '<p class="empty">검색 결과가 없습니다.</p>' if (query or site_key) \
+            else '<p class="empty">수집된 공지가 없습니다.</p>'
+
+    rows = ""
+    for n in results:
+        site_name = config.SITES.get(n["site_key"], {}).get("name", n["site_key"])
+        if n.get("notified_at"):
+            sent_kst = timeutil.to_kst_str(n["notified_at"])
+            sent_badge = f'<span class="notice-badge notice-badge-sent">{escape(sent_kst)} 발송</span>'
+        elif n.get("importance"):
+            sent_badge = '<span class="notice-badge notice-badge-unsent">미발송</span>'
+        else:
+            sent_badge = '<span class="notice-badge notice-badge-unsent">분석 전</span>'
+
+        links = f'<a href="{escape(n["url"])}" target="_blank">원문 보기 &rarr;</a>'
+        if n.get("extra_url"):
+            links += f'<a href="{escape(n["extra_url"])}" target="_blank">신구법비교 &rarr;</a>'
+
+        crawled_kst = timeutil.to_kst_str(n["crawled_at"])
+        rows += f"""
+        <div class="notice-row">
+          <div class="notice-head" style="align-items:flex-start;">
+            <span class="notice-title">[{escape(site_name)}] {escape(n["title"])}</span>
+            <span style="text-align:right;flex-shrink:0;">
+              {sent_badge}
+              <p class="notice-meta" style="margin:3px 0 0;">수집일 {escape(crawled_kst)}</p>
+            </span>
+          </div>
+          <p class="notice-meta">게시일 {escape(n.get("posted_at") or "-")}{" · " + escape(n["importance"]) if n.get("importance") else ""}</p>
+          <p class="notice-links" style="margin:6px 0 0;">{links}</p>
+        </div>"""
+
+    return rows
 
 
 def _render_email_log() -> str:
@@ -432,11 +520,12 @@ def _render_email_log() -> str:
                 f'스크린샷 보기 &rarr;</a>'
             )
         error_html = f'<p class="log-error">{escape(e["error"])}</p>' if e.get("error") else ""
+        sent_kst = timeutil.to_kst_str(e["sent_at"])
 
         rows += f"""
         <div class="log-row">
           <div class="log-head">
-            <span class="log-time">{escape(e["sent_at"])}</span>
+            <span class="log-time">{escape(sent_kst)}</span>
             {badge_html}
           </div>
           <p class="log-meta" style="margin:4px 0 0;">{escape(e["subject"] or "(제목 없음)")}</p>

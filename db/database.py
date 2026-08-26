@@ -1,10 +1,10 @@
 import sqlite3
 import os
 import json
-from datetime import datetime
 from typing import Optional
 
 import config
+import timeutil
 
 
 def get_connection() -> sqlite3.Connection:
@@ -101,7 +101,7 @@ def save_notice(
     extra_url: Optional[str] = None,
 ) -> Optional[int]:
     """새 공지를 저장하고 row id를 반환. 이미 존재하면 None 반환."""
-    crawled_at = datetime.now().isoformat(timespec="seconds")
+    crawled_at = timeutil.now_utc_iso()
     try:
         with get_connection() as conn:
             cursor = conn.execute(
@@ -114,6 +114,32 @@ def save_notice(
             return cursor.lastrowid
     except sqlite3.IntegrityError:
         return None
+
+
+def search_notices(query: str = "", site_key: str = "", limit: int = 100) -> list[dict]:
+    """관리자 페이지 '공지 이력' 탭 검색용 — 제목 기준 검색, 공지별 발송일(notified_at)과
+    원문 링크(url/extra_url)를 함께 반환한다. 아직 분석 전인 공지는 importance/notified_at이
+    NULL로 나온다."""
+    sql = """
+        SELECT n.id, n.site_key, n.title, n.url, n.extra_url, n.posted_at, n.crawled_at,
+               a.importance, a.category, a.notified_at
+        FROM notices n
+        LEFT JOIN analysis_results a ON a.notice_id = n.id
+        WHERE 1=1
+    """
+    params: list = []
+    if query:
+        sql += " AND n.title LIKE ?"
+        params.append(f"%{query}%")
+    if site_key:
+        sql += " AND n.site_key = ?"
+        params.append(site_key)
+    sql += " ORDER BY n.crawled_at DESC LIMIT ?"
+    params.append(limit)
+
+    with get_connection() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
 
 
 def update_content(site_key: str, notice_id: str, content: str):
@@ -139,7 +165,7 @@ def get_pending_notices():
 
 
 def save_analysis(notice_db_id: int, result: dict):
-    analyzed_at = datetime.now().isoformat(timespec="seconds")
+    analyzed_at = timeutil.now_utc_iso()
     with get_connection() as conn:
         conn.execute(
             """
@@ -190,7 +216,7 @@ def get_unnotified_analyses() -> list[dict]:
 
 def mark_notified(analysis_id: int):
     """이메일 발송 완료 후 호출 — 중복 발송 방지."""
-    notified_at = datetime.now().isoformat(timespec="seconds")
+    notified_at = timeutil.now_utc_iso()
     with get_connection() as conn:
         conn.execute(
             "UPDATE analysis_results SET notified_at=? WHERE id=?",

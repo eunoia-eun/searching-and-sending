@@ -6,7 +6,6 @@ import json
 import logging
 import re
 import smtplib
-from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import make_msgid
@@ -15,6 +14,7 @@ from html import escape
 import config
 import screenshot
 import settings_store
+import timeutil
 from db import database
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ def _build_card(n: dict, show_key_change: bool = True) -> str:
 
 
 def _build_html(notices: list[dict]) -> str:
-    date_str = datetime.now().strftime("%Y년 %m월 %d일")
+    date_str = timeutil.now_kst().strftime("%Y년 %m월 %d일")
 
     by_site: dict[str, list[dict]] = {}
     for n in notices:
@@ -250,14 +250,14 @@ def send_notification(notices: list[dict]) -> bool:
     if not config.EMAIL_SENDER or not recipients:
         logger.warning("이메일 설정 누락 — 발송 건너뜀 (EMAIL_SENDER, 발송 대상 이메일 확인)")
         database.log_email(
-            sent_at=datetime.now().isoformat(timespec="seconds"),
+            sent_at=timeutil.now_utc_iso(),
             recipients=recipients, subject="", message_id=None,
             notice_count=len(notices), site_breakdown=_site_breakdown(notices),
             success=False, error="이메일 설정 누락 (EMAIL_SENDER/발송 대상 없음)",
         )
         return False
 
-    subject = f"[공지] 건강검진 업데이트 - 건강의학부 ({datetime.now().strftime('%Y-%m-%d')})"
+    subject = f"[공지] 건강검진 업데이트 - 건강의학부 ({timeutil.now_kst().strftime('%Y-%m-%d')})"
     html = _build_html(notices)
     message_id = make_msgid(domain="health-notice.local")
 
@@ -298,7 +298,7 @@ def send_notification(notices: list[dict]) -> bool:
             screenshot_path = candidate_path
 
     database.log_email(
-        sent_at=datetime.now().isoformat(timespec="seconds"),
+        sent_at=timeutil.now_utc_iso(),
         recipients=recipients,
         subject=subject,
         message_id=message_id,

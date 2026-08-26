@@ -2,7 +2,6 @@ import time
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Optional
 
 import requests
@@ -10,6 +9,7 @@ from bs4 import BeautifulSoup
 
 import config
 import settings_store
+import timeutil
 from db import database
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class BaseCrawler(ABC):
     # ── 메인 실행 ─────────────────────────────────────────────
     def run(self) -> list[dict]:
         """새 공지를 수집하고 DB에 저장. 새로 저장된 항목 목록을 반환."""
-        started_at = datetime.now().isoformat(timespec="seconds")
+        started_at = timeutil.now_utc_iso()
         new_notices = []
         error_msg = ""
 
@@ -134,6 +134,6 @@ class BaseCrawler(ABC):
             error_msg = str(e)
             logger.error("[%s] 크롤링 오류: %s", self.site_name, e)
 
-        finished_at = datetime.now().isoformat(timespec="seconds")
+        finished_at = timeutil.now_utc_iso()
         database.log_crawl(self.site_key, started_at, finished_at, len(new_notices), error_msg)
         return new_notices
