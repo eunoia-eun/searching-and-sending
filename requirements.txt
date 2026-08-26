@@ -5,3 +5,4 @@ lxml==5.2.2
 anthropic==1.0.0
 flask==3.0.3
 waitress==3.0.0
+holidays==0.103

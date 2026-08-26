@@ -14,6 +14,9 @@
   python admin.py recipient list
   python admin.py recipient add someone@example.com
   python admin.py recipient remove someone@example.com
+  python admin.py schedule show
+  python admin.py schedule set 08:00 --weekday-only
+  python admin.py schedule set 13:00
 """
 import argparse
 import sys
@@ -22,6 +25,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 import config
+import schedule_store
 import settings_store
 from main import ALL_CRAWLERS
 
@@ -115,6 +119,32 @@ def cmd_recipient_remove(args):
     print(f"삭제됨: {args.email}")
 
 
+def cmd_schedule_show(args):
+    hour, minute = settings_store.get_schedule()
+    weekday_only = settings_store.get_weekday_only()
+    print(f"실행 시각: {hour:02d}:{minute:02d} KST")
+    print(f"평일에만 실행: {'예' if weekday_only else '아니오'}")
+
+
+def cmd_schedule_set(args):
+    try:
+        hour_str, minute_str = args.time.split(":")
+        hour, minute = int(hour_str), int(minute_str)
+        assert 0 <= hour <= 23 and 0 <= minute <= 59
+    except (ValueError, AssertionError):
+        print("시각 형식이 올바르지 않습니다 (예: 08:00)")
+        return
+
+    settings_store.set_schedule(hour, minute)
+    settings_store.set_weekday_only(args.weekday_only)
+    ok = schedule_store.apply(hour, minute, args.weekday_only)
+    note = " (평일에만)" if args.weekday_only else ""
+    if ok:
+        print(f"실행 시각 변경됨: {hour:02d}:{minute:02d} KST{note}")
+    else:
+        print("워크플로우 파일 갱신 실패 — .github/workflows/daily.yml 위치를 확인하세요")
+
+
 def main():
     parser = argparse.ArgumentParser(description="건강검진 공지 크롤러 관리자 CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -178,6 +208,16 @@ def main():
     p = rc_sub.add_parser("remove", help="발송 대상 이메일 삭제")
     p.add_argument("email")
     p.set_defaults(func=cmd_recipient_remove)
+
+    sch_parser = sub.add_parser("schedule", help="자동 실행 시각 관리")
+    sch_sub = sch_parser.add_subparsers(dest="action", required=True)
+
+    sch_sub.add_parser("show", help="현재 실행 시각/평일 설정 조회").set_defaults(func=cmd_schedule_show)
+
+    p = sch_sub.add_parser("set", help="실행 시각 변경 (KST)")
+    p.add_argument("time", help="HH:MM 형식 (예: 08:00)")
+    p.add_argument("--weekday-only", action="store_true", help="주말·한국 공휴일에는 실행하지 않음")
+    p.set_defaults(func=cmd_schedule_set)
 
     args = parser.parse_args()
     args.func(args)

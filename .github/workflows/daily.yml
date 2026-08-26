@@ -2,7 +2,7 @@ name: 건강검진 공지 자동 크롤링
 
 on:
   schedule:
-    - cron: '0 23 * * *'  # 매일 23:00 UTC = 08:00 KST
+    - cron: '0 23 * * 0-4'  # 매일 23:00 UTC = 08:00 KST (평일만)
   workflow_dispatch: {}
 
 concurrency:
@@ -30,6 +30,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: python main.py
 
       - name: 상태 저장 (DB/설정 커밋)

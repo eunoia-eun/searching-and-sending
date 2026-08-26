@@ -74,5 +74,6 @@
     "dms3022@naver.com"
   ],
   "schedule_hour": 8,
-  "schedule_minute": 0
+  "schedule_minute": 0,
+  "weekday_only": true
 }

@@ -8,6 +8,7 @@
 """
 import argparse
 import logging
+import os
 import sys
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -111,6 +112,14 @@ def main():
     parser.add_argument("--no-analyze", action="store_true", help="분석 단계 건너뜀")
     parser.add_argument("--no-notify",  action="store_true", help="이메일 발송 건너뜀")
     args = parser.parse_args()
+
+    # 정기 스케줄(cron) 실행일 때만 "평일에만 발송" 설정을 적용.
+    # 수동 트리거(workflow_dispatch)나 로컬 실행은 사용자가 명시적으로 요청한 것이므로 항상 진행.
+    if os.getenv("GITHUB_EVENT_NAME") == "schedule" and settings_store.get_weekday_only():
+        from holiday_check import is_weekend_or_holiday
+        if is_weekend_or_holiday():
+            logger.info("오늘은 주말 또는 한국 공휴일이라 자동 실행을 건너뜁니다 (평일에만 발송 설정).")
+            return
 
     database.init_db()
     logger.info("DB 초기화 완료")

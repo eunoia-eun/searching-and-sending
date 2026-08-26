@@ -158,10 +158,17 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
       매일 이 시각(한국 시간 기준)에 크롤링·분석·발송이 자동 실행됩니다.
       {schedule_note}
     </p>
-    <form method="post" action="/schedule/set" style="display:flex;gap:8px;align-items:center;">
-      <input type="time" name="time" value="{schedule_value}" required
-             style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
-      <button type="submit" style="background:#1565c0;color:white;padding:8px 16px;">저장</button>
+    <form method="post" action="/schedule/set">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+        <input type="time" name="time" value="{schedule_value}" required
+               style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+        <button type="submit" style="background:#1565c0;color:white;padding:8px 16px;">저장</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#333;cursor:pointer;">
+        <input type="checkbox" name="weekday_only" value="1" {weekday_only_checked}
+               style="width:16px;height:16px;">
+        평일에만 실행 (주말·한국 공휴일 제외)
+      </label>
     </form>
   </div>
 </div>
@@ -256,12 +263,14 @@ def _render():
         "" if git_sync.ENABLED else
         "(로컬 실행 중이라 이 변경은 GitHub에 자동 반영되지 않습니다 — 클라우드에 배포된 페이지에서 바꿔주세요)"
     )
+    weekday_only_checked = "checked" if settings_store.get_weekday_only() else ""
 
     return PAGE_TEMPLATE.format(
         sites_html=sites_html,
         recipients_html=recipients_html,
         schedule_value=schedule_value,
         schedule_note=schedule_note,
+        weekday_only_checked=weekday_only_checked,
     )
 
 
@@ -363,6 +372,7 @@ def exclude_remove():
 @app.route("/schedule/set", methods=["POST"])
 def schedule_set():
     time_str = request.form.get("time", "")
+    weekday_only = request.form.get("weekday_only") == "1"
     try:
         hour_str, minute_str = time_str.split(":")
         hour, minute = int(hour_str), int(minute_str)
@@ -371,7 +381,8 @@ def schedule_set():
         return redirect("/")
 
     settings_store.set_schedule(hour, minute)
-    schedule_store.apply(hour, minute)
+    settings_store.set_weekday_only(weekday_only)
+    schedule_store.apply(hour, minute, weekday_only)
     return redirect("/")
 
 

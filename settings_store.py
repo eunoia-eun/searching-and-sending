@@ -32,6 +32,7 @@ DEFAULT_SETTINGS = {
     "recipients": None,  # None = 아직 커스터마이즈 안 함 -> config.EMAIL_RECIPIENTS 사용
     "schedule_hour": 13,   # 매일 자동 실행 시각(KST), .github/workflows/daily.yml과 별개 저장
     "schedule_minute": 0,
+    "weekday_only": False,  # True면 주말·한국 공휴일에는 실행하지 않음
 }
 
 
@@ -120,6 +121,16 @@ def set_schedule(hour: int, minute: int):
     data = _load()
     data["schedule_hour"] = hour
     data["schedule_minute"] = minute
+    _save(data)
+
+
+def get_weekday_only() -> bool:
+    return bool(_load()["weekday_only"])
+
+
+def set_weekday_only(value: bool):
+    data = _load()
+    data["weekday_only"] = bool(value)
     _save(data)
 
 
