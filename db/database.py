@@ -56,6 +56,11 @@ def init_db():
             conn.execute("ALTER TABLE analysis_results ADD COLUMN notified_at TEXT")
         except Exception:
             pass
+        # 기존 DB 호환: extra_url 컬럼이 없으면 추가 (law_crawler의 신구법비교 링크 등 보조 링크용)
+        try:
+            conn.execute("ALTER TABLE notices ADD COLUMN extra_url TEXT")
+        except Exception:
+            pass
 
 
 def is_seen(site_key: str, notice_id: str) -> bool:
@@ -74,6 +79,7 @@ def save_notice(
     url: str,
     posted_at: Optional[str],
     content: Optional[str] = None,
+    extra_url: Optional[str] = None,
 ) -> Optional[int]:
     """새 공지를 저장하고 row id를 반환. 이미 존재하면 None 반환."""
     crawled_at = datetime.now().isoformat(timespec="seconds")
@@ -81,10 +87,10 @@ def save_notice(
         with get_connection() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO notices (site_key, notice_id, title, url, posted_at, content, crawled_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO notices (site_key, notice_id, title, url, posted_at, content, extra_url, crawled_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (site_key, notice_id, title, url, posted_at, content, crawled_at),
+                (site_key, notice_id, title, url, posted_at, content, extra_url, crawled_at),
             )
             return cursor.lastrowid
     except sqlite3.IntegrityError:
@@ -145,7 +151,7 @@ def get_unnotified_analyses() -> list[dict]:
         rows = conn.execute(
             """
             SELECT
-                n.id, n.site_key, n.title, n.url, n.posted_at,
+                n.id, n.site_key, n.title, n.url, n.posted_at, n.extra_url,
                 a.id         AS analysis_id,
                 a.category,
                 a.importance,

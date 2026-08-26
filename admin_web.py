@@ -194,6 +194,26 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
         </label>
       </form>
     </div>
+
+    <h2>메일 하단 문의처</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0;">
+        분류 기준·키워드 수정 문의를 받을 담당자 정보입니다. 메일 하단에 표시됩니다
+        (전부 비워두면 문의처 문구 자체가 표시되지 않습니다).
+      </p>
+      <form method="post" action="/contact/set">
+        <input type="text" name="name" placeholder="담당자 이름" value="{contact_name}"
+               style="width:100%;box-sizing:border-box;padding:8px 10px;margin-bottom:8px;
+                      border:1px solid #ddd;border-radius:6px;font-size:13px;">
+        <input type="text" name="phone" placeholder="연락처 (예: 02-1234-5678)" value="{contact_phone}"
+               style="width:100%;box-sizing:border-box;padding:8px 10px;margin-bottom:8px;
+                      border:1px solid #ddd;border-radius:6px;font-size:13px;">
+        <input type="email" name="email" placeholder="이메일" value="{contact_email}"
+               style="width:100%;box-sizing:border-box;padding:8px 10px;margin-bottom:12px;
+                      border:1px solid #ddd;border-radius:6px;font-size:13px;">
+        <button type="submit" style="background:#1565c0;color:white;padding:8px 16px;">저장</button>
+      </form>
+    </div>
   </div>
 
   <div id="tab-guide" class="tab-panel">
@@ -339,6 +359,7 @@ def _render():
         "(로컬 실행 중이라 이 변경은 GitHub에 자동 반영되지 않습니다 — 클라우드에 배포된 페이지에서 바꿔주세요)"
     )
     weekday_only_checked = "checked" if settings_store.get_weekday_only() else ""
+    contact = settings_store.get_contact()
 
     return PAGE_TEMPLATE.format(
         sites_html=sites_html,
@@ -346,6 +367,9 @@ def _render():
         schedule_value=schedule_value,
         schedule_note=schedule_note,
         weekday_only_checked=weekday_only_checked,
+        contact_name=escape(contact["name"]),
+        contact_phone=escape(contact["phone"]),
+        contact_email=escape(contact["email"]),
     )
 
 
@@ -458,6 +482,15 @@ def schedule_set():
     settings_store.set_schedule(hour, minute)
     settings_store.set_weekday_only(weekday_only)
     schedule_store.apply(hour, minute, weekday_only)
+    return redirect("/")
+
+
+@app.route("/contact/set", methods=["POST"])
+def contact_set():
+    name = request.form.get("name", "")
+    phone = request.form.get("phone", "")
+    email = request.form.get("email", "")
+    settings_store.set_contact(name, phone, email)
     return redirect("/")
 
 

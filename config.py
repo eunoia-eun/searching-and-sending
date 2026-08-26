@@ -34,9 +34,14 @@ RETRY_BACKOFF_BASE = 3   # seconds, 재시도 간격은 3초 -> 6초 -> 12초로
 # 대상 사이트 메타 정보
 SITES = {
     "nhis": {
-        "name": "국민건강보험공단",
+        "name": "국민건강보험공단 (공지사항)",
         "base_url": "https://www.nhis.or.kr",
         "crawler": "NhisCrawler",
+    },
+    "nhis_rule": {
+        "name": "국민건강보험공단 (규정 제개정예고)",
+        "base_url": "https://www.nhis.or.kr",
+        "crawler": "NhisRuleCrawler",
     },
     "moel": {
         "name": "고용노동부",

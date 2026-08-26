@@ -34,16 +34,28 @@ def _parse_points(raw) -> list[str]:
         return [raw] if raw else []
 
 
-def _build_card(n: dict) -> str:
+def _build_card(n: dict, show_key_change: bool = True) -> str:
     meta = _IMPORTANCE_META.get(n.get("importance"), _IMPORTANCE_META["Medium"])
     points = _parse_points(n.get("summary_points"))
     # summary_points[0]은 항상 "무엇이 바뀌었나", 나머지(적용대상/시행시기 등)는 한 줄로 압축
-    key_change = escape(str(points[0])) if points else ""
     meta_bits = [escape(str(p)) for p in points[1:]]
     posted_at = n.get("posted_at")
-    if posted_at:
+    # law는 posted_at이 실제 게시일이 아니라 시행일자라서 summary_points의 "언제부터"와
+    # 같은 날짜를 또 보여주게 됨 — law만 이 태그를 생략한다.
+    if posted_at and n.get("site_key") != "law":
         meta_bits.append(f"게시일 {escape(str(posted_at))}")
     meta_line = " · ".join(meta_bits)
+
+    # 이 항목이 상단 "한눈에 보기" 표의 미리보기 문장으로 이미 노출된 경우,
+    # 펼쳤을 때 같은 문장이 굵은 글씨로 또 나오는 걸 막기 위해 생략한다.
+    key_change_html = ""
+    if show_key_change and points:
+        key_change_html = f"""
+          <div style="border-left:3px solid #1e3a8a;padding:1px 0 1px 10px;margin:0 0 6px;">
+            <p style="margin:0;font-size:14.5px;color:#111827;font-weight:700;line-height:1.5;">
+              {escape(str(points[0]))}
+            </p>
+          </div>"""
 
     action = (n.get("action_required") or "").strip()
     action_html = ""
@@ -57,6 +69,14 @@ def _build_card(n: dict) -> str:
     title = escape(n.get("title") or "")
     url = escape(n.get("url") or "#", quote=True)
 
+    extra_url = n.get("extra_url")
+    compare_link_html = ""
+    if extra_url:
+        compare_link_html = f"""
+             <a href="{escape(extra_url, quote=True)}" style="display:inline-block;margin-top:8px;
+                margin-left:14px;font-size:12px;color:#6b21a8;font-weight:600;
+                text-decoration:none;">신구법비교 &rarr;</a>"""
+
     return f"""
         <div style="padding:14px 0;border-bottom:1px solid #f0f0f0;">
           <div style="margin-bottom:5px;">
@@ -68,17 +88,13 @@ def _build_card(n: dict) -> str:
           <p style="margin:0 0 6px;font-size:13.5px;color:#4b5563;line-height:1.5;">
             {title}
           </p>
-          <div style="border-left:3px solid #1e3a8a;padding:1px 0 1px 10px;margin:0 0 6px;">
-            <p style="margin:0;font-size:14.5px;color:#111827;font-weight:700;line-height:1.5;">
-              {key_change}
-            </p>
-          </div>
+          {key_change_html}
           <p style="margin:0;font-size:11.5px;color:#9ca3af;">
             {meta_line}
           </p>
           {action_html}
           <a href="{url}" style="display:inline-block;margin-top:8px;font-size:12px;
-             color:#1e3a8a;font-weight:600;text-decoration:none;">원문 보기 &rarr;</a>
+             color:#1e3a8a;font-weight:600;text-decoration:none;">원문 보기 &rarr;</a>{compare_link_html}
         </div>"""
 
 
@@ -92,8 +108,6 @@ def _build_html(notices: list[dict]) -> str:
     # 현재 모니터링 중인 사이트 순서를 기준으로 하되, 비활성화됐지만 이번 발송에 낀 사이트도 뒤에 포함
     site_order = settings_store.get_enabled_sites()
     ordered_sites = site_order + [k for k in by_site if k not in site_order]
-    updated_count = sum(1 for k in ordered_sites if by_site.get(k))
-
     overview_rows = ""
     for site_key in ordered_sites:
         site_name = escape(config.SITES.get(site_key, {}).get("name", site_key))
@@ -136,15 +150,28 @@ def _build_html(notices: list[dict]) -> str:
         if not items:
             continue
         site_name = escape(config.SITES.get(site_key, {}).get("name", site_key))
-        cards = "".join(_build_card(n) for n in items)
+        # 상단 개요표의 미리보기 문장으로 이미 노출된 항목(중요도 최상위 1건)은
+        # 카드에서 핵심 변경 문구를 다시 강조하지 않는다 (완전한 중복이라 반응이 안 좋았음)
+        top = min(items, key=lambda n: _IMPORTANCE_RANK.get(n.get("importance"), 1))
+        cards = "".join(_build_card(n, show_key_change=(n is not top)) for n in items)
         sections += f"""
-        <div style="margin:22px 0 0;">
-          <div style="background:#1e3a8a;color:#ffffff;font-size:15px;font-weight:800;
-                      padding:9px 14px;border-radius:6px;margin-bottom:4px;">
+        <details style="margin:22px 0 0;">
+          <summary style="background:#1e3a8a;color:#ffffff;font-size:15px;font-weight:800;
+                      padding:9px 14px;border-radius:6px;margin-bottom:4px;cursor:pointer;">
             {site_name}
-          </div>
+            <span style="font-weight:400;font-size:11.5px;color:#c7d2fe;">(클릭하여 펼치기/접기)</span>
+          </summary>
           {cards}
-        </div>"""
+        </details>"""
+
+    contact = settings_store.get_contact()
+    contact_bits = [escape(v) for v in (contact["name"], contact["phone"], contact["email"]) if v]
+    contact_html = ""
+    if contact_bits:
+        contact_html = f"""
+      <p style="margin:0 0 12px;color:#6b7280;font-size:11px;line-height:1.6;text-align:center;">
+        분류 기준·키워드 수정 등 문의사항은 담당자에게 연락해 주세요 — {" · ".join(contact_bits)}
+      </p>"""
 
     return f"""<!DOCTYPE html>
 <html>
@@ -154,11 +181,12 @@ def _build_html(notices: list[dict]) -> str:
   <div style="max-width:640px;margin:0 auto;">
     <div style="background:#1e3a8a;border-radius:12px 12px 0 0;padding:22px 28px;">
       <h1 style="margin:0 0 4px;color:#ffffff;font-size:18px;font-weight:700;">
-        건강검진 공지 모니터링
+        [건강의학부] 건강검진 업데이트 사항
       </h1>
-      <p style="margin:0;color:#c7d2fe;font-size:12px;">
-        {date_str} · 모니터링 {len(ordered_sites)}개 기관 중 {updated_count}곳 업데이트
-      </p>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;">
+        <span style="color:#c7d2fe;font-size:12px;">모니터링 {len(ordered_sites)}개 기관 중</span>
+        <span style="color:#c7d2fe;font-size:12px;">{date_str} · 예방건진센터</span>
+      </div>
     </div>
     <div style="background:#ffffff;padding:18px 24px 6px;border-left:1px solid #e5e7eb;
                 border-right:1px solid #e5e7eb;">
@@ -169,7 +197,7 @@ def _build_html(notices: list[dict]) -> str:
     <div style="background:#ffffff;padding:0 24px 8px;border-left:1px solid #e5e7eb;
                 border-right:1px solid #e5e7eb;">
       <p style="margin:18px 0 0;font-size:11px;font-weight:700;color:#9ca3af;
-                text-transform:uppercase;letter-spacing:.4px;">세부 내용</p>
+                text-transform:uppercase;letter-spacing:.4px;">세부 내용 (기관명 클릭 시 펼쳐짐)</p>
       {sections}
     </div>
     <div style="background:#ffffff;border-radius:0 0 12px 12px;padding:16px 24px 22px;
@@ -184,6 +212,7 @@ def _build_html(notices: list[dict]) -> str:
           관계 기관을 통해 정확한 내용을 직접 확인하시기 바랍니다.
         </p>
       </div>
+      {contact_html}
       <p style="color:#9ca3af;font-size:11px;text-align:center;margin:0;">
         본 메일은 자동 발송되었습니다.
       </p>

@@ -14,6 +14,7 @@ BASE_URL = "https://www.law.go.kr"
 SEARCH_API = "https://www.law.go.kr/DRF/lawSearch.do"
 LAW_SERVICE_API = "https://www.law.go.kr/DRF/lawService.do"
 DETAIL_URL = "https://www.law.go.kr/lsInfoP.do"
+OLD_AND_NEW_URL = "https://www.law.go.kr/lsInfoP.do"  # 신구조문대비표(신구법비교) — urlMode/viewCls로 진입해야 실제 사이트와 동일한 화면(헤더/메뉴 포함)이 뜸
 
 # 모니터링 대상 법령 (법령명: 법령 일련번호)
 TARGET_LAWS = {
@@ -61,6 +62,8 @@ class LawCrawler(BaseCrawler):
             revision = law.find("제개정구분명")
             dept = law.find("소관부처명")
             link = law.find("법령상세링크")
+            ancYd = law.find("공포일자")
+            ancNo = law.find("공포번호")
 
             if not law_id or not mst:
                 continue
@@ -71,8 +74,19 @@ class LawCrawler(BaseCrawler):
             revision_text = revision.get_text() if revision else ""
             dept_text = dept.get_text() if dept else ""
 
-            title = f"[법령개정] {title_text} ({revision_text}, 시행 {efd_text})"
+            # 카테고리 배지("법령·고시 개정")와 메타줄의 시행일이 이미 같은 정보를 보여주므로
+            # 제목에는 법령명과 개정구분만 남긴다 (예전엔 [법령개정]/시행일까지 넣어 3중 중복이었음)
+            title = f"{title_text} ({revision_text})"
             url = f"{BASE_URL}{link.get_text()}" if link else f"{DETAIL_URL}?lsiSeq={mst.get_text()}"
+
+            # 신구법비교 링크 — 제정(최초 등록)이라 비교 대상이 없는 경우는 제외
+            extra_url = None
+            if ancYd and ancNo and revision_text != "제정":
+                extra_url = (
+                    f"{OLD_AND_NEW_URL}?lsiSeq={mst.get_text()}&lsId={law_id.get_text()}"
+                    f"&ancYd={ancYd.get_text()}&ancNo={ancNo.get_text()}"
+                    f"&urlMode=lsOldAndNew&viewCls=lsOldAndNew"
+                )
 
             items.append(NoticeItem(
                 notice_id=notice_id,
@@ -80,6 +94,7 @@ class LawCrawler(BaseCrawler):
                 url=url,
                 posted_at=efd_text,
                 content=f"{title_text} - {revision_text} (소관부처: {dept_text}, 시행일자: {efd_text})",
+                extra_url=extra_url,
             ))
 
         return items

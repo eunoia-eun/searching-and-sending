@@ -26,13 +26,16 @@ def _resolve_path() -> str:
     return SETTINGS_PATH
 
 DEFAULT_SETTINGS = {
-    "enabled_sites": ["nhis", "moel", "hira", "kdca", "law", "khhi", "kahp", "kiha", "mpm"],
+    "enabled_sites": ["nhis", "nhis_rule", "moel", "hira", "kdca", "law", "khhi", "kahp", "kiha", "mpm"],
     "keywords": {},  # {site_key: [keyword, ...]} — 포함 키워드. 없는 사이트/빈 리스트 = 필터 없음(전체 통과)
     "exclude_keywords": {},  # {site_key: [keyword, ...]} — 제외 키워드. 하나라도 포함되면 무조건 걸러짐
     "recipients": None,  # None = 아직 커스터마이즈 안 함 -> config.EMAIL_RECIPIENTS 사용
     "schedule_hour": 13,   # 매일 자동 실행 시각(KST), .github/workflows/daily.yml과 별개 저장
     "schedule_minute": 0,
     "weekday_only": False,  # True면 주말·한국 공휴일에는 실행하지 않음
+    "contact_name": "",   # 메일 하단에 표시할 "기준 문의" 담당자 정보
+    "contact_phone": "",
+    "contact_email": "",
 }
 
 
@@ -190,6 +193,23 @@ def remove_recipient(email: str):
     if email in current:
         current.remove(email)
     data["recipients"] = current
+    _save(data)
+
+
+def get_contact() -> dict:
+    data = _load()
+    return {
+        "name": data.get("contact_name", ""),
+        "phone": data.get("contact_phone", ""),
+        "email": data.get("contact_email", ""),
+    }
+
+
+def set_contact(name: str, phone: str, email: str):
+    data = _load()
+    data["contact_name"] = name.strip()
+    data["contact_phone"] = phone.strip()
+    data["contact_email"] = email.strip()
     _save(data)
 
 

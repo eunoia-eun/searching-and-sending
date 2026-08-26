@@ -22,6 +22,7 @@ class NoticeItem:
     url: str
     posted_at: Optional[str] = None
     content: Optional[str] = None
+    extra_url: Optional[str] = None  # 원문 외 보조 링크 (예: law_crawler의 신구법비교)
 
 
 class BaseCrawler(ABC):
@@ -115,6 +116,7 @@ class BaseCrawler(ABC):
                     url=item.url,
                     posted_at=item.posted_at,
                     content=content,
+                    extra_url=item.extra_url,
                 )
                 if row_id:
                     new_notices.append({
@@ -124,6 +126,7 @@ class BaseCrawler(ABC):
                         "url": item.url,
                         "posted_at": item.posted_at,
                         "content": content,
+                        "extra_url": item.extra_url,
                     })
                     logger.info("[%s] 신규 공지 저장: %s", self.site_name, item.title)
 

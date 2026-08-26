@@ -8,7 +8,8 @@
     "kahp",
     "kiha",
     "mpm",
-    "nhis"
+    "nhis",
+    "nhis_rule"
   ],
   "keywords": {
     "nhis": [
@@ -17,6 +18,14 @@
       "건강진단",
       "검진",
       "채용",
+      "신체검사",
+      "특수검진"
+    ],
+    "nhis_rule": [
+      "건강검진",
+      "특수건강",
+      "건강진단",
+      "검진",
       "신체검사",
       "특수검진"
     ],
@@ -75,5 +84,8 @@
   ],
   "schedule_hour": 8,
   "schedule_minute": 0,
-  "weekday_only": true
+  "weekday_only": true,
+  "contact_name": "",
+  "contact_phone": "",
+  "contact_email": ""
 }

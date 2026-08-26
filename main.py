@@ -17,6 +17,7 @@ if hasattr(sys.stdout, "reconfigure"):
 import settings_store
 from db import database
 from crawlers.nhis_crawler import NhisCrawler
+from crawlers.nhis_rule_crawler import NhisRuleCrawler
 from crawlers.moel_crawler import MoelCrawler
 from crawlers.hira_crawler import HiraCrawler
 from crawlers.kdca_crawler import KdcaCrawler
@@ -38,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 ALL_CRAWLERS = {
     "nhis": NhisCrawler,
+    "nhis_rule": NhisRuleCrawler,
     "moel": MoelCrawler,
     "hira": HiraCrawler,
     "kdca": KdcaCrawler,
