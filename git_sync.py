@@ -49,6 +49,16 @@ def ensure_ready() -> str:
     return os.path.join(SYNC_DIR, _SETTINGS_REL_PATH)
 
 
+def resolve_repo_path(rel_path: str) -> str:
+    """레포 루트 기준 상대경로(rel_path)를 실제 읽을 수 있는 절대/상대 경로로 변환.
+    CLOUD_SYNC 환경(admin_web.py)에서는 동기화 클론 기준 절대경로로, 그 외(로컬 실행,
+    GitHub Actions)에서는 레포 루트 기준 상대경로 그대로 반환한다."""
+    if not ENABLED:
+        return rel_path
+    pull()
+    return os.path.join(SYNC_DIR, rel_path)
+
+
 def pull():
     """읽기 전 항상 원격 main의 최신 상태로 맞춘다 (rebase 없이 fetch + hard reset —
     얕은 클론에서 rebase가 브랜치를 못 찾는 문제를 피하기 위함).

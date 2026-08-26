@@ -52,17 +52,24 @@ def init_db():
             );
 
             CREATE TABLE IF NOT EXISTS email_log (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                sent_at        TEXT NOT NULL,
-                recipients     TEXT NOT NULL,
-                subject        TEXT NOT NULL,
-                message_id     TEXT,
-                notice_count   INTEGER DEFAULT 0,
-                site_breakdown TEXT,
-                success        INTEGER NOT NULL,
-                error          TEXT
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                sent_at         TEXT NOT NULL,
+                recipients      TEXT NOT NULL,
+                subject         TEXT NOT NULL,
+                message_id      TEXT,
+                notice_count    INTEGER DEFAULT 0,
+                site_breakdown  TEXT,
+                success         INTEGER NOT NULL,
+                error           TEXT,
+                screenshot_path TEXT
             );
         """)
+        # 기존 DB 호환: screenshot_path 컬럼이 없으면 추가
+        # (Gmail IMAP 원본 조회가 배포 환경에서 불안정해서 발송 시 자동 캡처 방식으로 대체)
+        try:
+            conn.execute("ALTER TABLE email_log ADD COLUMN screenshot_path TEXT")
+        except Exception:
+            pass
         # 기존 DB 호환: notified_at 컬럼이 없으면 추가
         try:
             conn.execute("ALTER TABLE analysis_results ADD COLUMN notified_at TEXT")
@@ -211,14 +218,16 @@ def log_email(
     site_breakdown: dict,
     success: bool,
     error: str = "",
+    screenshot_path: Optional[str] = None,
 ):
     """발송 시도 결과를 기록 — 성공/실패와 무관하게 항상 남긴다 (실패 원인 진단용)."""
     with get_connection() as conn:
         conn.execute(
             """
             INSERT INTO email_log
-              (sent_at, recipients, subject, message_id, notice_count, site_breakdown, success, error)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              (sent_at, recipients, subject, message_id, notice_count, site_breakdown,
+               success, error, screenshot_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 sent_at,
@@ -229,6 +238,7 @@ def log_email(
                 json.dumps(site_breakdown, ensure_ascii=False),
                 1 if success else 0,
                 error,
+                screenshot_path,
             ),
         )
 

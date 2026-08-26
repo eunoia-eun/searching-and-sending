@@ -12,14 +12,13 @@ import secrets
 import threading
 import webbrowser
 
-from flask import Flask, redirect, request, session, url_for
+from flask import Flask, abort, redirect, request, send_file, session, url_for
 from markupsafe import escape
 
 import json
 
 import config
 import git_sync
-import mail_archive
 import schedule_store
 import settings_store
 from db import database
@@ -273,8 +272,8 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     <h2>발송 이력</h2>
     <div class="card">
       <p class="hint" style="margin-top:0;">
-        최근 발송 시도 이력입니다. 성공한 건은 "원본 메일 보기"로 그때 실제 발송된 메일을
-        발송 계정의 Gmail 보낸편지함에서 그대로 가져와 보여줍니다.
+        최근 발송 시도 이력입니다. 성공한 건은 발송 당시 실제 화면을 캡처한 스크린샷을
+        볼 수 있습니다.
       </p>
       {email_log_html}
     </div>
@@ -427,9 +426,10 @@ def _render_email_log() -> str:
         )
 
         view_html = ""
-        if ok and e.get("message_id"):
+        if ok and e.get("screenshot_path"):
             view_html = (
-                f'<a class="log-view" href="/email_log/{e["id"]}/view" target="_blank">원본 메일 보기 &rarr;</a>'
+                f'<a class="log-view" href="/email_log/{e["id"]}/screenshot" target="_blank">'
+                f'스크린샷 보기 &rarr;</a>'
             )
         error_html = f'<p class="log-error">{escape(e["error"])}</p>' if e.get("error") else ""
 
@@ -561,20 +561,16 @@ def schedule_set():
     return redirect("/")
 
 
-@app.route("/email_log/<int:entry_id>/view")
-def email_log_view(entry_id):
+@app.route("/email_log/<int:entry_id>/screenshot")
+def email_log_screenshot(entry_id):
     entry = database.get_email_log_entry(entry_id)
-    if not entry or not entry.get("success") or not entry.get("message_id"):
-        return "<p>발송 이력을 찾을 수 없습니다.</p>", 404
+    if not entry or not entry.get("screenshot_path"):
+        abort(404)
 
-    html = mail_archive.fetch_sent_html(entry["message_id"])
-    if not html:
-        return (
-            "<p>Gmail 보낸편지함에서 원본을 찾지 못했습니다. "
-            "보낸편지함에서 삭제됐거나, 발송 계정의 IMAP 접근이 꺼져있을 수 있습니다.</p>",
-            404,
-        )
-    return html
+    path = git_sync.resolve_repo_path(entry["screenshot_path"])
+    if not os.path.exists(path):
+        return "<p>스크린샷 파일을 찾을 수 없습니다.</p>", 404
+    return send_file(path, mimetype="image/png")
 
 
 @app.route("/contact/set", methods=["POST"])

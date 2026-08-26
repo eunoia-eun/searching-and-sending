@@ -4,6 +4,7 @@
 """
 import json
 import logging
+import re
 import smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -12,6 +13,7 @@ from email.utils import make_msgid
 from html import escape
 
 import config
+import screenshot
 import settings_store
 from db import database
 
@@ -235,7 +237,10 @@ def send_notification(notices: list[dict]) -> bool:
     notices: database.get_unnotified_analyses() 반환값.
     발송 성공 시 각 공지를 mark_notified 처리 후 True 반환.
     성공/실패 여부와 무관하게 email_log에 발송 이력을 남긴다 (관리자 페이지 발송 이력 탭,
-    실패 원인 진단용 — Message-ID를 남겨서 나중에 Gmail 보낸편지함 원본도 조회 가능).
+    실패 원인 진단용). 성공 시에는 실제 발송 화면을 헤드리스 브라우저로 캡처해 저장해서,
+    나중에 관리자 페이지에서 그때 발송된 화면을 그대로 다시 볼 수 있게 한다
+    (Gmail IMAP으로 보낸편지함 원본을 직접 조회하는 방식은 배포 환경에서 연결이 불안정해
+    이 방식으로 대체함).
     """
     if not notices:
         logger.info("발송할 공지 없음")
@@ -285,6 +290,13 @@ def send_notification(notices: list[dict]) -> bool:
         error_msg = str(exc)
         logger.error("이메일 발송 실패: %s", exc)
 
+    screenshot_path = None
+    if success:
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", message_id)
+        candidate_path = f"data/email_screenshots/{safe_id}.png"
+        if screenshot.capture(html, candidate_path):
+            screenshot_path = candidate_path
+
     database.log_email(
         sent_at=datetime.now().isoformat(timespec="seconds"),
         recipients=recipients,
@@ -294,6 +306,7 @@ def send_notification(notices: list[dict]) -> bool:
         site_breakdown=_site_breakdown(notices),
         success=success,
         error=error_msg,
+        screenshot_path=screenshot_path,
     )
 
     return success
