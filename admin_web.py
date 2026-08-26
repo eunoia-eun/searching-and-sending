@@ -121,6 +121,20 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .kw-add-mini input[type=text] {{ flex: 1; padding: 6px 10px; border: 1px solid #ddd;
                                     border-radius: 6px; font-size: 12px; }}
   .kw-add-mini button {{ background: #1565c0; color: white; padding: 6px 12px; }}
+
+  /* 탭 */
+  .tabs {{ display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #e0e0e0; }}
+  .tab-btn {{ background: none; border: none; padding: 10px 16px; font-size: 13px;
+              font-weight: 600; color: #888; cursor: pointer; border-bottom: 2px solid transparent;
+              margin-bottom: -1px; }}
+  .tab-btn.active {{ color: #1e3a8a; border-bottom-color: #1e3a8a; }}
+  .tab-panel {{ display: none; }}
+  .tab-panel.active {{ display: block; }}
+
+  /* 판단 기준 안내 */
+  .guide-row {{ padding: 10px 0; border-bottom: 1px solid #f0f0f0; }}
+  .guide-row:last-child {{ border-bottom: none; }}
+  .guide-label {{ font-weight: 700; font-size: 13px; }}
 </style>
 </head>
 <body>
@@ -131,47 +145,108 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   </div>
   <p class="hint">여기서 바꾼 설정은 다음 크롤링부터 바로 적용됩니다.</p>
 
-  <h2>크롤링 대상 사이트 &amp; 키워드 필터</h2>
-  <div class="card">
-    <p class="hint" style="margin-top:0;">
-      사이트를 켜고 끄고, 그 아래 제목/본문에 하나라도 포함되면 수집할 키워드를
-      사이트별로 관리합니다. 키워드가 하나도 없으면 필터 없이 전체 공지를 수집합니다.
-    </p>
-    {sites_html}
+  <div class="tabs">
+    <button type="button" class="tab-btn" data-tab="sites" onclick="showTab('sites')">사이트 &amp; 키워드</button>
+    <button type="button" class="tab-btn" data-tab="notify" onclick="showTab('notify')">발송 설정</button>
+    <button type="button" class="tab-btn" data-tab="guide" onclick="showTab('guide')">판단 기준 안내</button>
   </div>
 
-  <h2>발송 대상 이메일</h2>
-  <div class="card">
-    <p class="hint" style="margin-top:0;">
-      새 공지가 분석되면 이 목록의 이메일로 발송됩니다.
-    </p>
-    {recipients_html}
-    <form class="add-form" method="post" action="/recipient/add">
-      <input type="email" name="email" placeholder="example@gmail.com" required>
-      <button type="submit">추가</button>
-    </form>
+  <div id="tab-sites" class="tab-panel">
+    <h2>크롤링 대상 사이트 &amp; 키워드 필터</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0;">
+        사이트를 켜고 끄고, 그 아래 제목/본문에 하나라도 포함되면 수집할 키워드를
+        사이트별로 관리합니다. 키워드가 하나도 없으면 필터 없이 전체 공지를 수집합니다.
+      </p>
+      {sites_html}
+    </div>
   </div>
 
-  <h2>자동 실행 시각</h2>
-  <div class="card">
-    <p class="hint" style="margin-top:0;">
-      매일 이 시각(한국 시간 기준)에 크롤링·분석·발송이 자동 실행됩니다.
-      {schedule_note}
-    </p>
-    <form method="post" action="/schedule/set">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
-        <input type="time" name="time" value="{schedule_value}" required
-               style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
-        <button type="submit" style="background:#1565c0;color:white;padding:8px 16px;">저장</button>
+  <div id="tab-notify" class="tab-panel">
+    <h2>발송 대상 이메일</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0;">
+        새 공지가 분석되면 이 목록의 이메일로 발송됩니다.
+      </p>
+      {recipients_html}
+      <form class="add-form" method="post" action="/recipient/add">
+        <input type="email" name="email" placeholder="example@gmail.com" required>
+        <button type="submit">추가</button>
+      </form>
+    </div>
+
+    <h2>자동 실행 시각</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0;">
+        매일 이 시각(한국 시간 기준)에 크롤링·분석·발송이 자동 실행됩니다.
+        {schedule_note}
+      </p>
+      <form method="post" action="/schedule/set">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+          <input type="time" name="time" value="{schedule_value}" required
+                 style="padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+          <button type="submit" style="background:#1565c0;color:white;padding:8px 16px;">저장</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#333;cursor:pointer;">
+          <input type="checkbox" name="weekday_only" value="1" {weekday_only_checked}
+                 style="width:16px;height:16px;">
+          평일에만 실행 (주말·한국 공휴일 제외)
+        </label>
+      </form>
+    </div>
+  </div>
+
+  <div id="tab-guide" class="tab-panel">
+    <h2>알림 중요도 판단 기준</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0;">
+        공지를 수집하면 AI(Claude)가 아래 기준으로 중요도를 판단하고, 발송 여부를 결정합니다.
+        이 기준 자체를 바꾸려면 코드(analyzer.py) 수정이 필요해서 여기서 직접 조정은 안 되지만,
+        참고하시라고 안내만 표시해드려요.
+      </p>
+      <div class="guide-row">
+        <span class="guide-label" style="color:#dc2626;">■ 긴급 (High)</span>
+        <p style="margin:4px 0 0;font-size:13px;color:#374151;">
+          법령·고시 개정, 수가 변경, 검진 항목·기준 변경, 시스템 의무 적용 등 즉각 대응이 필요한 경우
+        </p>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#333;cursor:pointer;">
-        <input type="checkbox" name="weekday_only" value="1" {weekday_only_checked}
-               style="width:16px;height:16px;">
-        평일에만 실행 (주말·한국 공휴일 제외)
-      </label>
-    </form>
+      <div class="guide-row">
+        <span class="guide-label" style="color:#d97706;">■ 중요 (Medium)</span>
+        <p style="margin:4px 0 0;font-size:13px;color:#374151;">
+          지침·안내·유권해석 등 숙지가 필요한 경우
+        </p>
+      </div>
+      <div class="guide-row">
+        <span class="guide-label" style="color:#6b7280;">■ 참고 (Low)</span>
+        <p style="margin:4px 0 0;font-size:13px;color:#374151;">
+          단순 공지, 행사, 모집, 순수 홍보성 내용
+        </p>
+      </div>
+      <div class="guide-row">
+        <span class="guide-label" style="color:#1a1a1a;">메일 발송 여부</span>
+        <p style="margin:4px 0 0;font-size:13px;color:#374151;">
+          긴급·중요 중 실제 현장 대응이 필요하다고 판단되면 발송하고,
+          참고이거나 단순 홍보성이면 발송하지 않습니다.
+        </p>
+      </div>
+    </div>
   </div>
 </div>
+<script>
+  function showTab(name) {{
+    document.querySelectorAll('.tab-panel').forEach(function(el) {{ el.classList.remove('active'); }});
+    document.querySelectorAll('.tab-btn').forEach(function(el) {{ el.classList.remove('active'); }});
+    document.getElementById('tab-' + name).classList.add('active');
+    document.querySelector('.tab-btn[data-tab="' + name + '"]').classList.add('active');
+    try {{ localStorage.setItem('admin_tab', name); }} catch (e) {{}}
+  }}
+  (function() {{
+    var saved = 'sites';
+    try {{ saved = localStorage.getItem('admin_tab') || 'sites'; }} catch (e) {{}}
+    if (!document.getElementById('tab-' + saved)) saved = 'sites';
+    showTab(saved);
+  }})();
+</script>
 </body>
 </html>"""
 

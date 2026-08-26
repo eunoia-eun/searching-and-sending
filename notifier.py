@@ -16,13 +16,13 @@ from db import database
 
 logger = logging.getLogger(__name__)
 
-# 중요도별 배지 색상/라벨/이모지 (색 하나에만 의존하지 않도록 이모지 병행)
+# 중요도별 색상/라벨 (카드 안에서 작은 텍스트 배지로만 사용 — 임원 보고용이라 색은 절제)
 _IMPORTANCE_META = {
-    "High":   {"color": "#dc2626", "bg": "#fef2f2", "label": "긴급", "emoji": "🔴"},
-    "Medium": {"color": "#d97706", "bg": "#fffbeb", "label": "중요", "emoji": "🟠"},
-    "Low":    {"color": "#6b7280", "bg": "#f9fafb", "label": "참고", "emoji": "⚪"},
+    "High":   {"color": "#dc2626", "label": "긴급"},
+    "Medium": {"color": "#d97706", "label": "중요"},
+    "Low":    {"color": "#6b7280", "label": "참고"},
 }
-_IMPORTANCE_ORDER = ["High", "Medium", "Low"]
+_IMPORTANCE_RANK = {"High": 0, "Medium": 1, "Low": 2}  # 숫자가 작을수록 중요 — 사이트 요약 미리보기 선정용
 
 
 def _parse_points(raw) -> list[str]:
@@ -36,75 +36,115 @@ def _parse_points(raw) -> list[str]:
 
 def _build_card(n: dict) -> str:
     meta = _IMPORTANCE_META.get(n.get("importance"), _IMPORTANCE_META["Medium"])
-    site_name = config.SITES.get(n["site_key"], {}).get("name", n["site_key"])
     points = _parse_points(n.get("summary_points"))
-    # summary_points[0]은 항상 "무엇이 바뀌었나" — 나머지(적용대상/시행시기)와 분리해서 강조
+    # summary_points[0]은 항상 "무엇이 바뀌었나", 나머지(적용대상/시행시기 등)는 한 줄로 압축
     key_change = escape(str(points[0])) if points else ""
-    rest_points = points[1:]
-    points_html = "".join(
-        f'<li style="margin-bottom:5px;">{escape(str(p))}</li>' for p in rest_points
-    )
-    action = escape(n.get("action_required") or "해당 없음")
+    meta_bits = [escape(str(p)) for p in points[1:]]
+    posted_at = n.get("posted_at")
+    if posted_at:
+        meta_bits.append(f"게시일 {escape(str(posted_at))}")
+    meta_line = " · ".join(meta_bits)
+
+    action = (n.get("action_required") or "").strip()
+    action_html = ""
+    if action and action != "해당 없음":
+        action_html = f"""
+          <p style="margin:8px 0 0;font-size:12.5px;color:#111827;line-height:1.6;">
+            <span style="font-weight:700;">▸ 조치 필요</span> {escape(action)}
+          </p>"""
+
     category = escape(n.get("category") or "")
     title = escape(n.get("title") or "")
-    posted_at = escape(n.get("posted_at") or "-")
     url = escape(n.get("url") or "#", quote=True)
 
     return f"""
-        <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;
-                    margin-bottom:14px;overflow:hidden;">
-          <div style="padding:16px 18px;">
-            <div style="margin-bottom:10px;">
-              <span style="display:inline-block;background:{meta['bg']};color:{meta['color']};
-                    font-weight:700;font-size:11px;padding:3px 10px;border-radius:20px;
-                    margin-right:6px;white-space:nowrap;">{meta['emoji']} {meta['label']}</span>
-              <span style="display:inline-block;background:#f3f4f6;color:#4b5563;
-                    font-size:11px;padding:3px 10px;border-radius:20px;white-space:nowrap;">{category}</span>
-            </div>
-            <h3 style="margin:0 0 8px;font-size:15px;color:#111827;line-height:1.5;font-weight:700;">
-              {title}
-            </h3>
-            <div style="background:#eff6ff;border-left:3px solid #2563eb;border-radius:4px;
-                 padding:9px 12px;margin:0 0 10px;font-size:13px;color:#1e3a8a;
-                 font-weight:700;line-height:1.5;">
-              📌 {key_change}
-            </div>
-            <p style="margin:0 0 10px;color:#9ca3af;font-size:12px;">
-              {escape(site_name)} · 게시일 {posted_at}
-            </p>
-            <ul style="margin:0 0 12px;padding-left:20px;color:#374151;font-size:13px;line-height:1.7;">
-              {points_html}
-            </ul>
-            <div style="background:#f9fafb;border-radius:8px;padding:10px 12px;margin-bottom:14px;
-                 font-size:13px;color:#374151;line-height:1.5;">
-              <span style="color:#111827;font-weight:700;">✅ 조치 필요</span><br>{action}
-            </div>
-            <a href="{url}" style="display:inline-block;background:#1e3a8a;color:#ffffff;
-               font-size:12px;font-weight:700;padding:9px 18px;border-radius:6px;
-               text-decoration:none;">원문 보기 &rarr;</a>
+        <div style="padding:14px 0;border-bottom:1px solid #f0f0f0;">
+          <div style="margin-bottom:5px;">
+            <span style="font-size:11px;font-weight:700;color:{meta['color']};margin-right:8px;">
+              ■ {meta['label']}
+            </span>
+            <span style="font-size:11px;color:#9ca3af;">{category}</span>
           </div>
+          <p style="margin:0 0 6px;font-size:13.5px;color:#4b5563;line-height:1.5;">
+            {title}
+          </p>
+          <div style="border-left:3px solid #1e3a8a;padding:1px 0 1px 10px;margin:0 0 6px;">
+            <p style="margin:0;font-size:14.5px;color:#111827;font-weight:700;line-height:1.5;">
+              {key_change}
+            </p>
+          </div>
+          <p style="margin:0;font-size:11.5px;color:#9ca3af;">
+            {meta_line}
+          </p>
+          {action_html}
+          <a href="{url}" style="display:inline-block;margin-top:8px;font-size:12px;
+             color:#1e3a8a;font-weight:600;text-decoration:none;">원문 보기 &rarr;</a>
         </div>"""
 
 
 def _build_html(notices: list[dict]) -> str:
     date_str = datetime.now().strftime("%Y년 %m월 %d일")
 
-    groups: dict[str, list[dict]] = {k: [] for k in _IMPORTANCE_ORDER}
+    by_site: dict[str, list[dict]] = {}
     for n in notices:
-        importance = n.get("importance")
-        groups[importance if importance in groups else "Medium"].append(n)
+        by_site.setdefault(n["site_key"], []).append(n)
+
+    # 현재 모니터링 중인 사이트 순서를 기준으로 하되, 비활성화됐지만 이번 발송에 낀 사이트도 뒤에 포함
+    site_order = settings_store.get_enabled_sites()
+    ordered_sites = site_order + [k for k in by_site if k not in site_order]
+    updated_count = sum(1 for k in ordered_sites if by_site.get(k))
+
+    overview_rows = ""
+    for site_key in ordered_sites:
+        site_name = escape(config.SITES.get(site_key, {}).get("name", site_key))
+        items = by_site.get(site_key, [])
+        count = len(items)
+        if items:
+            top = min(items, key=lambda n: _IMPORTANCE_RANK.get(n.get("importance"), 1))
+            top_points = _parse_points(top.get("summary_points"))
+            preview = str(top_points[0]) if top_points else (top.get("title") or "")
+            if len(preview) > 42:
+                preview = preview[:42] + "…"
+            extra = f" 외 {count - 1}건" if count > 1 else ""
+            overview_rows += f"""
+            <tr>
+              <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;">
+                  <span style="font-size:15px;font-weight:800;color:#1e3a8a;">{site_name}</span>
+                  <span style="background:#dcfce7;color:#16a34a;font-weight:700;font-size:11px;
+                        padding:2px 9px;border-radius:10px;white-space:nowrap;">{count}건</span>
+                </div>
+                <div style="font-size:12px;color:#4b5563;margin-top:3px;">
+                  {escape(preview)}{extra}
+                </div>
+              </td>
+            </tr>"""
+        else:
+            overview_rows += f"""
+            <tr>
+              <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;">
+                  <span style="font-size:15px;font-weight:800;color:#c3c9d3;">{site_name}</span>
+                  <span style="color:#d1d5db;font-size:11px;">업데이트 없음</span>
+                </div>
+              </td>
+            </tr>"""
 
     sections = ""
-    for importance in _IMPORTANCE_ORDER:
-        items = groups[importance]
+    for site_key in ordered_sites:
+        items = by_site.get(site_key)
         if not items:
             continue
-        meta = _IMPORTANCE_META[importance]
+        site_name = escape(config.SITES.get(site_key, {}).get("name", site_key))
+        cards = "".join(_build_card(n) for n in items)
         sections += f"""
-        <div style="margin:22px 0 10px;font-size:13px;font-weight:700;color:{meta['color']};">
-          {meta['emoji']} {meta['label']} ({len(items)}건)
+        <div style="margin:22px 0 0;">
+          <div style="background:#1e3a8a;color:#ffffff;font-size:15px;font-weight:800;
+                      padding:9px 14px;border-radius:6px;margin-bottom:4px;">
+            {site_name}
+          </div>
+          {cards}
         </div>"""
-        sections += "".join(_build_card(n) for n in items)
 
     return f"""<!DOCTYPE html>
 <html>
@@ -114,14 +154,22 @@ def _build_html(notices: list[dict]) -> str:
   <div style="max-width:640px;margin:0 auto;">
     <div style="background:#1e3a8a;border-radius:12px 12px 0 0;padding:22px 28px;">
       <h1 style="margin:0 0 4px;color:#ffffff;font-size:18px;font-weight:700;">
-        🏥 건강검진 공지 모니터링
+        건강검진 공지 모니터링
       </h1>
       <p style="margin:0;color:#c7d2fe;font-size:12px;">
-        {date_str} · 신규 {len(notices)}건
+        {date_str} · 모니터링 {len(ordered_sites)}개 기관 중 {updated_count}곳 업데이트
       </p>
     </div>
-    <div style="background:#ffffff;padding:20px 24px 8px;border-left:1px solid #e5e7eb;
+    <div style="background:#ffffff;padding:18px 24px 6px;border-left:1px solid #e5e7eb;
                 border-right:1px solid #e5e7eb;">
+      <table style="width:100%;border-collapse:collapse;">
+        {overview_rows}
+      </table>
+    </div>
+    <div style="background:#ffffff;padding:0 24px 8px;border-left:1px solid #e5e7eb;
+                border-right:1px solid #e5e7eb;">
+      <p style="margin:18px 0 0;font-size:11px;font-weight:700;color:#9ca3af;
+                text-transform:uppercase;letter-spacing:.4px;">세부 내용</p>
       {sections}
     </div>
     <div style="background:#ffffff;border-radius:0 0 12px 12px;padding:16px 24px 22px;
