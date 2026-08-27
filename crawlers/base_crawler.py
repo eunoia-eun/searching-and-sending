@@ -1,3 +1,4 @@
+import base64
 import time
 import logging
 from abc import ABC, abstractmethod
@@ -25,6 +26,34 @@ class NoticeItem:
     extra_url: Optional[str] = None  # 원문 외 보조 링크 (예: law_crawler의 신구법비교)
 
 
+class LambdaRelayAdapter(requests.adapters.HTTPAdapter):
+    """GitHub Actions(Azure) IP를 차단하는 .go.kr 사이트용 — 요청을 직접 보내는 대신
+    서울 리전 AWS Lambda에 대상 URL을 넘겨 대신 가져오게 한다."""
+
+    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):
+        relay_resp = requests.post(
+            config.LAMBDA_RELAY_URL,
+            json={"url": request.url},
+            headers={"x-relay-secret": config.LAMBDA_RELAY_SECRET},
+            timeout=timeout or config.REQUEST_TIMEOUT,
+        )
+        relay_resp.raise_for_status()
+        data = relay_resp.json()
+
+        resp = requests.Response()
+        resp.status_code = data["status"]
+        resp._content = base64.b64decode(data["body_b64"])
+        resp.headers["Content-Type"] = data.get("content_type", "")
+        resp.url = request.url
+        resp.request = request
+
+        # 헤더에 charset이 명시돼 있으면 그걸 쓰고, 없으면(예: moel — meta 태그로만 선언)
+        # requests 기본값인 ISO-8859-1 대신 UTF-8로 가정 (대상 4개 사이트 전부 실제로는 UTF-8)
+        encoding = requests.utils.get_encoding_from_headers(resp.headers)
+        resp.encoding = encoding if encoding and encoding.lower() != "iso-8859-1" else "utf-8"
+        return resp
+
+
 class BaseCrawler(ABC):
     site_key: str = ""
     site_name: str = ""
@@ -32,6 +61,10 @@ class BaseCrawler(ABC):
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(config.DEFAULT_HEADERS)
+        if config.LAMBDA_RELAY_URL and self.site_key in config.LAMBDA_RELAY_SITES:
+            base_url = config.SITES.get(self.site_key, {}).get("base_url", "")
+            if base_url:
+                self.session.mount(base_url, LambdaRelayAdapter())
 
     # ── 하위 클래스가 반드시 구현 ───────────────────────────────
     @abstractmethod

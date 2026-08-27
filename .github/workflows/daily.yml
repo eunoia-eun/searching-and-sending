@@ -34,6 +34,8 @@ jobs:
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          LAMBDA_RELAY_URL: ${{ secrets.LAMBDA_RELAY_URL }}
+          LAMBDA_RELAY_SECRET: ${{ secrets.LAMBDA_RELAY_SECRET }}
         run: python main.py
 
       - name: 상태 저장 (DB/설정 커밋)

@@ -31,6 +31,14 @@ REQUEST_DELAY = 1.5   # seconds between requests (예의 있는 크롤링)
 MAX_RETRIES = 3          # 연결 오류/타임아웃/서버 5xx 발생 시 최대 재시도 횟수
 RETRY_BACKOFF_BASE = 3   # seconds, 재시도 간격은 3초 -> 6초 -> 12초로 증가
 
+# .go.kr 사이트 우회용 AWS Lambda 릴레이 (2026-08-27 추가)
+# GitHub Actions(Azure) IP는 moel/kdca/law/mpm 등 중앙정부 .go.kr 사이트에서
+# 접속 자체가 매번 타임아웃남 (해외/클라우드 IP 차단으로 추정, .or.kr 사이트는 정상).
+# 서울 리전 Lambda는 정상 접속되는 것을 확인해서, 이 사이트들만 Lambda를 경유해 가져온다.
+LAMBDA_RELAY_URL = os.getenv("LAMBDA_RELAY_URL", "").strip()
+LAMBDA_RELAY_SECRET = os.getenv("LAMBDA_RELAY_SECRET", "").strip()
+LAMBDA_RELAY_SITES = {"moel", "kdca", "law", "mpm"}
+
 # 대상 사이트 메타 정보
 SITES = {
     "nhis": {
