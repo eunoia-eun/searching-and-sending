@@ -181,6 +181,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     <button type="button" class="tab-btn" data-tab="sites" onclick="showTab('sites')">사이트 &amp; 키워드</button>
     <button type="button" class="tab-btn" data-tab="notify" onclick="showTab('notify')">발송 설정</button>
     <button type="button" class="tab-btn" data-tab="guide" onclick="showTab('guide')">판단 기준 안내</button>
+    <button type="button" class="tab-btn" data-tab="runs" onclick="showTab('runs')">실행 이력</button>
     <button type="button" class="tab-btn" data-tab="history" onclick="showTab('history')">발송 이력</button>
     <button type="button" class="tab-btn" data-tab="notices" onclick="showTab('notices')">공지 이력</button>
   </div>
@@ -283,6 +284,17 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
           참고이거나 단순 홍보성이면 발송하지 않습니다.
         </p>
       </div>
+    </div>
+  </div>
+
+  <div id="tab-runs" class="tab-panel">
+    <h2>실행 이력</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0;">
+        날짜별 실행 결과입니다. "신규 없음 — 정상 미발송"이면 그날은 진짜 새 소식이 없었던 것이고,
+        "사이트 오류"가 보이면 그 사이트를 못 봐서 놓쳤을 수 있다는 뜻입니다. 펼치면 사이트별 상세를 볼 수 있습니다.
+      </p>
+      {run_history_html}
     </div>
   </div>
 
@@ -433,6 +445,7 @@ def _render():
         contact_name=escape(contact["name"]),
         contact_phone=escape(contact["phone"]),
         contact_email=escape(contact["email"]),
+        run_history_html=_render_run_history(),
         email_log_html=_render_email_log(),
         notice_query=escape(request.args.get("q", "")),
         site_options_html=_render_site_options(request.args.get("site", "")),
@@ -487,6 +500,84 @@ def _render_notices() -> str:
         </div>"""
 
     return rows
+
+
+def _render_run_history() -> str:
+    logs = database.get_crawl_log(limit=500)
+    if not logs:
+        return '<p class="empty">실행 이력이 없습니다.</p>'
+
+    emails = database.get_email_log(limit=200)
+    email_dates_success = set()
+    email_dates_failed = set()
+    for e in emails:
+        d = timeutil.to_kst_str(e["sent_at"], fmt="%Y-%m-%d")
+        if e["success"]:
+            email_dates_success.add(d)
+        else:
+            email_dates_failed.add(d)
+
+    grouped: dict[str, list[dict]] = {}
+    for row in logs:
+        date = timeutil.to_kst_str(row["started_at"], fmt="%Y-%m-%d")
+        grouped.setdefault(date, []).append(row)
+
+    rows_html = ""
+    for date in sorted(grouped.keys(), reverse=True):
+        site_rows = grouped[date]
+        errors = [r for r in site_rows if r["error"]]
+        ok_count = len(site_rows) - len(errors)
+        new_sum = sum(r["new_count"] for r in site_rows)
+
+        if errors:
+            status_badge = (
+                f'<span class="notice-badge" style="background:#fef2f2;color:#dc2626;">'
+                f'⚠ {len(errors)}개 사이트 오류</span>'
+            )
+        else:
+            status_badge = '<span class="notice-badge notice-badge-sent">✅ 전체 정상</span>'
+
+        if date in email_dates_success:
+            mail_badge = '<span class="notice-badge notice-badge-sent">메일 발송됨</span>'
+        elif date in email_dates_failed:
+            mail_badge = '<span class="notice-badge" style="background:#fef2f2;color:#dc2626;">발송 시도 실패</span>'
+        elif errors:
+            mail_badge = '<span class="notice-badge notice-badge-unsent">미발송</span>'
+        elif new_sum == 0:
+            mail_badge = '<span class="notice-badge notice-badge-unsent">신규 없음 — 정상 미발송</span>'
+        else:
+            mail_badge = '<span class="notice-badge notice-badge-unsent">신규는 있었지만 발송 불필요 판단</span>'
+
+        detail_rows = ""
+        for r in sorted(site_rows, key=lambda r: r["site_key"]):
+            site_name = config.SITES.get(r["site_key"], {}).get("name", r["site_key"])
+            time_str = timeutil.to_kst_str(r["started_at"], fmt="%H:%M")
+            if r["error"]:
+                detail_rows += f"""
+                <div class="notice-row" style="border-left:3px solid #dc2626;padding-left:8px;">
+                  <span class="notice-title">[{escape(site_name)}] 오류</span>
+                  <p class="notice-meta">{time_str} · {escape(r["error"])}</p>
+                </div>"""
+            else:
+                detail_rows += f"""
+                <div class="notice-row">
+                  <span class="notice-title">[{escape(site_name)}]</span>
+                  <p class="notice-meta">{time_str} · 신규 {r["new_count"]}건</p>
+                </div>"""
+
+        rows_html += f"""
+        <details class="notice-row">
+          <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span class="notice-title">{escape(date)}</span>
+            <span style="text-align:right;">
+              {status_badge} {mail_badge}
+              <p class="notice-meta" style="margin:3px 0 0;">신규 {new_sum}건 · {ok_count}/{len(site_rows)} 사이트 성공</p>
+            </span>
+          </summary>
+          <div style="margin-top:8px;">{detail_rows}</div>
+        </details>"""
+
+    return rows_html
 
 
 def _render_email_log() -> str:

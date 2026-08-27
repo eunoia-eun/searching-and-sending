@@ -235,6 +235,22 @@ def log_crawl(site_key: str, started_at: str, finished_at: str, new_count: int, 
         )
 
 
+def get_crawl_log(limit: int = 500) -> list[dict]:
+    """최근 크롤링 실행 기록 (사이트별 성공/에러) — 관리자 페이지 '실행 이력' 탭에서
+    '업데이트가 없어서 안 보낸 것'과 '사이트가 막혀서 못 본 것'을 구분하는 데 쓴다."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT site_key, started_at, finished_at, new_count, error
+            FROM crawl_log
+            ORDER BY started_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def log_email(
     sent_at: str,
     recipients: list[str],
