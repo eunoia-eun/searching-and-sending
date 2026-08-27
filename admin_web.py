@@ -135,14 +135,6 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
   .tab-panel {{ display: none; }}
   .tab-panel.active {{ display: block; }}
 
-  /* 이력 탭 내부 보기 전환(날짜별/검색) */
-  .subtabs {{ display: flex; gap: 6px; margin-bottom: 14px; }}
-  .subtab-btn {{ background: #f3f4f6; border: none; padding: 7px 14px; font-size: 12.5px;
-                 font-weight: 700; color: #6b7280; border-radius: 999px; cursor: pointer; }}
-  .subtab-btn.active {{ background: #1e3a8a; color: #ffffff; }}
-  .subview {{ display: none; }}
-  .subview.active {{ display: block; }}
-
   /* 판단 기준 안내 */
   .guide-row {{ padding: 10px 0; border-bottom: 1px solid #f0f0f0; }}
   .guide-row:last-child {{ border-bottom: none; }}
@@ -307,36 +299,21 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 
   <div id="tab-log" class="tab-panel">
     <h2>실행·공지 이력</h2>
-    <div class="subtabs">
-      <button type="button" class="subtab-btn" data-sub="runs" onclick="showSubView('runs')">날짜별 보기</button>
-      <button type="button" class="subtab-btn" data-sub="notices" onclick="showSubView('notices')">공지 검색</button>
-    </div>
-
-    <div id="sub-runs" class="subview">
-      <div class="card">
-        <p class="hint" style="margin-top:0;">
-          날짜별 실행 결과입니다. "신규 없음 — 정상 미발송"이면 그날은 진짜 새 소식이 없었던 것이고,
-          "사이트 오류"가 보이면 그 사이트를 못 봐서 놓쳤을 수 있다는 뜻입니다. 펼치면 사이트별 상세를 볼 수 있습니다.
-        </p>
-        {run_history_html}
-      </div>
-    </div>
-
-    <div id="sub-notices" class="subview">
-      <div class="card">
-        <p class="hint" style="margin-top:0;">
-          지금까지 수집한 공지를 제목으로 검색하고, 각 공지가 언제 발송됐는지·원문 링크를 확인합니다.
-        </p>
-        <form class="search-form" method="get" action="/">
-          <input type="text" name="q" placeholder="제목 검색" value="{notice_query}">
-          <select name="site">
-            <option value="">전체 사이트</option>
-            {site_options_html}
-          </select>
-          <button type="submit">검색</button>
-        </form>
-        {notices_html}
-      </div>
+    <div class="card">
+      <p class="hint" style="margin-top:0;">
+        날짜별 실행 결과입니다. 사이트가 정상이면 그날 수집된 공지 제목이 그대로 보이고,
+        "사이트 오류"가 보이면 그 사이트를 못 봐서 놓쳤을 수 있다는 뜻입니다.
+        제목으로 검색하거나 사이트로 좁혀서 볼 수 있습니다. 펼치면 사이트별 상세를 볼 수 있습니다.
+      </p>
+      <form class="search-form" method="get" action="/">
+        <input type="text" name="q" placeholder="제목 검색" value="{notice_query}">
+        <select name="site">
+          <option value="">전체 사이트</option>
+          {site_options_html}
+        </select>
+        <button type="submit">검색</button>
+      </form>
+      {run_history_html}
     </div>
   </div>
 </div>
@@ -348,25 +325,12 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
     document.querySelector('.tab-btn[data-tab="' + name + '"]').classList.add('active');
     try {{ localStorage.setItem('admin_tab', name); }} catch (e) {{}}
   }}
-  function showSubView(name) {{
-    document.querySelectorAll('.subview').forEach(function(el) {{ el.classList.remove('active'); }});
-    document.querySelectorAll('.subtab-btn').forEach(function(el) {{ el.classList.remove('active'); }});
-    document.getElementById('sub-' + name).classList.add('active');
-    document.querySelector('.subtab-btn[data-sub="' + name + '"]').classList.add('active');
-    try {{ localStorage.setItem('admin_subview', name); }} catch (e) {{}}
-  }}
   (function() {{
     var saved = 'sites';
     try {{ saved = localStorage.getItem('admin_tab') || 'sites'; }} catch (e) {{}}
     if (!document.getElementById('tab-' + saved)) saved = 'sites';
     if ({force_search_js}) saved = 'log';
     showTab(saved);
-
-    var savedSub = 'runs';
-    try {{ savedSub = localStorage.getItem('admin_subview') || 'runs'; }} catch (e) {{}}
-    if ({force_search_js}) savedSub = 'notices';
-    if (!document.getElementById('sub-' + savedSub)) savedSub = 'runs';
-    showSubView(savedSub);
   }})();
 </script>
 </body>
@@ -477,7 +441,6 @@ def _render():
         email_log_html=_render_email_log(),
         notice_query=escape(request.args.get("q", "")),
         site_options_html=_render_site_options(request.args.get("site", "")),
-        notices_html=_render_notices(),
         force_search_js="true" if has_active_search else "false",
     )
 
@@ -490,48 +453,35 @@ def _render_site_options(selected: str) -> str:
     return options
 
 
-def _render_notices() -> str:
-    query = request.args.get("q", "").strip()
-    site_key = request.args.get("site", "").strip()
-    results = database.search_notices(query=query, site_key=site_key, limit=100)
+def _render_notice_row(n: dict) -> str:
+    if n.get("notified_at"):
+        sent_kst = timeutil.to_kst_str(n["notified_at"])
+        sent_badge = f'<span class="notice-badge notice-badge-sent">{escape(sent_kst)} 발송</span>'
+    elif n.get("importance"):
+        sent_badge = '<span class="notice-badge notice-badge-unsent">미발송</span>'
+    else:
+        sent_badge = '<span class="notice-badge notice-badge-unsent">분석 전</span>'
 
-    if not results:
-        return '<p class="empty">검색 결과가 없습니다.</p>' if (query or site_key) \
-            else '<p class="empty">수집된 공지가 없습니다.</p>'
+    links = f'<a href="{escape(n["url"])}" target="_blank">원문 보기 &rarr;</a>'
+    if n.get("extra_url"):
+        links += f'<a href="{escape(n["extra_url"])}" target="_blank">신구법비교 &rarr;</a>'
 
-    rows = ""
-    for n in results:
-        site_name = config.SITES.get(n["site_key"], {}).get("name", n["site_key"])
-        if n.get("notified_at"):
-            sent_kst = timeutil.to_kst_str(n["notified_at"])
-            sent_badge = f'<span class="notice-badge notice-badge-sent">{escape(sent_kst)} 발송</span>'
-        elif n.get("importance"):
-            sent_badge = '<span class="notice-badge notice-badge-unsent">미발송</span>'
-        else:
-            sent_badge = '<span class="notice-badge notice-badge-unsent">분석 전</span>'
-
-        links = f'<a href="{escape(n["url"])}" target="_blank">원문 보기 &rarr;</a>'
-        if n.get("extra_url"):
-            links += f'<a href="{escape(n["extra_url"])}" target="_blank">신구법비교 &rarr;</a>'
-
-        crawled_kst = timeutil.to_kst_str(n["crawled_at"])
-        rows += f"""
+    return f"""
         <div class="notice-row">
           <div class="notice-head" style="align-items:flex-start;">
-            <span class="notice-title">[{escape(site_name)}] {escape(n["title"])}</span>
-            <span style="text-align:right;flex-shrink:0;">
-              {sent_badge}
-              <p class="notice-meta" style="margin:3px 0 0;">수집일 {escape(crawled_kst)}</p>
-            </span>
+            <span class="notice-title">{escape(n["title"])}</span>
+            <span style="text-align:right;flex-shrink:0;">{sent_badge}</span>
           </div>
           <p class="notice-meta">게시일 {escape(n.get("posted_at") or "-")}{" · " + escape(n["importance"]) if n.get("importance") else ""}</p>
           <p class="notice-links" style="margin:6px 0 0;">{links}</p>
         </div>"""
 
-    return rows
-
 
 def _render_run_history() -> str:
+    query = request.args.get("q", "").strip()
+    site_filter = request.args.get("site", "").strip()
+    filtering = bool(query or site_filter)
+
     logs = database.get_crawl_log(limit=500)
     if not logs:
         return '<p class="empty">실행 이력이 없습니다.</p>'
@@ -546,6 +496,14 @@ def _render_run_history() -> str:
         else:
             email_dates_failed.add(d)
 
+    # 제목 검색/사이트 필터에 걸리는 공지를 (사이트, 수집일) 기준으로 미리 묶어둔다 —
+    # 날짜별 실행 이력 안에 실제 공지 제목을 그대로 끼워 넣기 위함
+    notices = database.search_notices(query=query, site_key=site_filter, limit=1000)
+    notices_by_site_date: dict[tuple[str, str], list[dict]] = {}
+    for n in notices:
+        key = (n["site_key"], timeutil.to_kst_str(n["crawled_at"], fmt="%Y-%m-%d"))
+        notices_by_site_date.setdefault(key, []).append(n)
+
     grouped: dict[str, list[dict]] = {}
     for row in logs:
         date = timeutil.to_kst_str(row["started_at"], fmt="%Y-%m-%d")
@@ -557,6 +515,39 @@ def _render_run_history() -> str:
         errors = [r for r in site_rows if r["error"]]
         ok_count = len(site_rows) - len(errors)
         new_sum = sum(r["new_count"] for r in site_rows)
+
+        detail_rows = ""
+        any_shown = False
+        for r in sorted(site_rows, key=lambda r: r["site_key"]):
+            if site_filter and r["site_key"] != site_filter:
+                continue
+            site_name = config.SITES.get(r["site_key"], {}).get("name", r["site_key"])
+            time_str = timeutil.to_kst_str(r["started_at"], fmt="%H:%M")
+
+            if r["error"]:
+                if query:  # 제목 검색 중엔 공지 자체가 없는 오류 행은 검색과 무관하므로 숨김
+                    continue
+                any_shown = True
+                detail_rows += f"""
+                <div class="notice-row" style="border-left:3px solid #dc2626;padding-left:8px;">
+                  <span class="notice-title">[{escape(site_name)}] 오류</span>
+                  <p class="notice-meta">{time_str} · {escape(r["error"])}</p>
+                </div>"""
+                continue
+
+            matched = notices_by_site_date.get((r["site_key"], date), [])
+            if filtering and not matched:
+                continue
+            any_shown = True
+            detail_rows += f"""
+                <p class="notice-meta" style="margin:10px 0 4px;font-weight:700;color:#1e3a8a;">
+                  [{escape(site_name)}] {time_str} · 신규 {r["new_count"]}건
+                </p>"""
+            for n in matched:
+                detail_rows += _render_notice_row(n)
+
+        if not any_shown:
+            continue  # 필터에 걸리는 게 하나도 없는 날짜는 통째로 숨김
 
         if errors:
             status_badge = (
@@ -577,25 +568,8 @@ def _render_run_history() -> str:
         else:
             mail_badge = '<span class="notice-badge notice-badge-unsent">신규는 있었지만 발송 불필요 판단</span>'
 
-        detail_rows = ""
-        for r in sorted(site_rows, key=lambda r: r["site_key"]):
-            site_name = config.SITES.get(r["site_key"], {}).get("name", r["site_key"])
-            time_str = timeutil.to_kst_str(r["started_at"], fmt="%H:%M")
-            if r["error"]:
-                detail_rows += f"""
-                <div class="notice-row" style="border-left:3px solid #dc2626;padding-left:8px;">
-                  <span class="notice-title">[{escape(site_name)}] 오류</span>
-                  <p class="notice-meta">{time_str} · {escape(r["error"])}</p>
-                </div>"""
-            else:
-                detail_rows += f"""
-                <div class="notice-row">
-                  <span class="notice-title">[{escape(site_name)}]</span>
-                  <p class="notice-meta">{time_str} · 신규 {r["new_count"]}건</p>
-                </div>"""
-
         rows_html += f"""
-        <details class="notice-row">
+        <details class="notice-row"{" open" if filtering else ""}>
           <summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;">
             <span class="notice-title">{escape(date)}</span>
             <span style="text-align:right;">
@@ -606,6 +580,8 @@ def _render_run_history() -> str:
           <div style="margin-top:8px;">{detail_rows}</div>
         </details>"""
 
+    if not rows_html:
+        return '<p class="empty">검색 결과가 없습니다.</p>' if filtering else '<p class="empty">실행 이력이 없습니다.</p>'
     return rows_html
 
 
