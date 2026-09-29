@@ -37,6 +37,21 @@ def _parse_points(raw) -> list[str]:
         return [raw] if raw else []
 
 
+def _truncate_preview(text: str, limit: int = 42) -> str:
+    """단순 글자수 자르기 대신 단어/괄호 중간에서 끊기지 않도록 다듬는다.
+    ("...관련 수가코드(H..." 처럼 괄호가 안 닫힌 채로 잘리는 문제 수정)"""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    truncated = text[:limit]
+    last_space = truncated.rfind(" ")
+    if last_space > limit * 0.6:  # 너무 짧아지지 않는 선에서만 단어 경계로 자름
+        truncated = truncated[:last_space]
+    if truncated.rfind("(") > truncated.rfind(")"):  # 여는 괄호만 남았으면 그 앞까지만
+        truncated = truncated[:truncated.rfind("(")]
+    return truncated.rstrip(" ,·-") + "…"
+
+
 def _build_card(n: dict, show_key_change: bool = True) -> str:
     meta = _IMPORTANCE_META.get(n.get("importance"), _IMPORTANCE_META["Medium"])
     points = _parse_points(n.get("summary_points"))
@@ -111,61 +126,66 @@ def _build_html(notices: list[dict]) -> str:
     # 현재 모니터링 중인 사이트 순서를 기준으로 하되, 비활성화됐지만 이번 발송에 낀 사이트도 뒤에 포함
     site_order = settings_store.get_enabled_sites()
     ordered_sites = site_order + [k for k in by_site if k not in site_order]
+    # 업데이트 있는 기관만 개요/상세에 노출하고, 없는 기관은 하단에 한 줄로 축약
+    # (15개 중 대부분이 "업데이트 없음"으로 나열되면 정작 중요한 내용이 묻히는 문제가 있었음)
+    active_sites = [k for k in ordered_sites if by_site.get(k)]
+    inactive_sites = [k for k in ordered_sites if not by_site.get(k)]
+
     overview_rows = ""
-    for site_key in ordered_sites:
+    for site_key in active_sites:
         site_name = escape(config.SITES.get(site_key, {}).get("name", site_key))
-        items = by_site.get(site_key, [])
+        items = by_site[site_key]
         count = len(items)
-        if items:
-            top = min(items, key=lambda n: _IMPORTANCE_RANK.get(n.get("importance"), 1))
-            top_points = _parse_points(top.get("summary_points"))
-            preview = str(top_points[0]) if top_points else (top.get("title") or "")
-            if len(preview) > 42:
-                preview = preview[:42] + "…"
-            extra = f" 외 {count - 1}건" if count > 1 else ""
-            overview_rows += f"""
-            <tr>
-              <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;">
-                <div style="display:flex;align-items:baseline;justify-content:space-between;">
-                  <span style="font-size:15px;font-weight:800;color:#1e3a8a;">{site_name}</span>
-                  <span style="background:#dcfce7;color:#16a34a;font-weight:700;font-size:11px;
-                        padding:2px 9px;border-radius:10px;white-space:nowrap;">{count}건</span>
-                </div>
-                <div style="font-size:12px;color:#4b5563;margin-top:3px;">
-                  {escape(preview)}{extra}
-                </div>
-              </td>
-            </tr>"""
-        else:
-            overview_rows += f"""
-            <tr>
-              <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;">
-                <div style="display:flex;align-items:baseline;justify-content:space-between;">
-                  <span style="font-size:15px;font-weight:800;color:#c3c9d3;">{site_name}</span>
-                  <span style="color:#d1d5db;font-size:11px;">업데이트 없음</span>
-                </div>
-              </td>
-            </tr>"""
+        top = min(items, key=lambda n: _IMPORTANCE_RANK.get(n.get("importance"), 1))
+        top_points = _parse_points(top.get("summary_points"))
+        preview = str(top_points[0]) if top_points else (top.get("title") or "")
+        preview = _truncate_preview(preview)
+        extra = f" 외 {count - 1}건" if count > 1 else ""
+        overview_rows += f"""
+        <tr>
+          <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;">
+              <span style="font-size:15px;font-weight:800;color:#1e3a8a;">{site_name}</span>
+              <span style="background:#dcfce7;color:#16a34a;font-weight:700;font-size:11px;
+                    padding:2px 9px;border-radius:10px;white-space:nowrap;">{count}건</span>
+            </div>
+            <div style="font-size:12px;color:#4b5563;margin-top:3px;">
+              {escape(preview)}{extra}
+            </div>
+          </td>
+        </tr>"""
+
+    if inactive_sites:
+        inactive_names = ", ".join(
+            escape(config.SITES.get(k, {}).get("name", k)) for k in inactive_sites
+        )
+        overview_rows += f"""
+        <tr>
+          <td style="padding:10px 0 0;">
+            <div style="font-size:11px;color:#9ca3af;line-height:1.6;">
+              그 외 {len(inactive_sites)}개 기관은 업데이트 없음 — {inactive_names}
+            </div>
+          </td>
+        </tr>"""
 
     sections = ""
-    for site_key in ordered_sites:
-        items = by_site.get(site_key)
-        if not items:
-            continue
+    for site_key in active_sites:
+        items = by_site[site_key]
         site_name = escape(config.SITES.get(site_key, {}).get("name", site_key))
         # 상단 개요표의 미리보기 문장으로 이미 노출된 항목(중요도 최상위 1건)은
         # 카드에서 핵심 변경 문구를 다시 강조하지 않는다 (완전한 중복이라 반응이 안 좋았음)
         top = min(items, key=lambda n: _IMPORTANCE_RANK.get(n.get("importance"), 1))
         cards = "".join(_build_card(n, show_key_change=(n is not top)) for n in items)
+        # Gmail이 <details>/<summary>를 지원 안 해서(강제로 <u> 밑줄 텍스트로 치환됨) 클릭 펼치기
+        # 대신 정적 레이아웃으로 변경 — 어차피 이제 업데이트 있는 기관만 나와서 길지 않음
         sections += f"""
-        <details style="margin:22px 0 0;">
-          <summary style="background:#1e3a8a;color:#ffffff;font-size:15px;font-weight:800;
-                      padding:9px 14px;border-radius:6px;margin-bottom:4px;cursor:pointer;">
+        <div style="margin:22px 0 0;">
+          <div style="background:#1e3a8a;color:#ffffff;font-size:15px;font-weight:800;
+                      padding:9px 14px;border-radius:6px;margin-bottom:4px;">
             {site_name}
-            <span style="font-weight:400;font-size:11.5px;color:#c7d2fe;">(클릭하여 펼치기/접기)</span>
-          </summary>
+          </div>
           {cards}
-        </details>"""
+        </div>"""
 
     contact = settings_store.get_contact()
     contact_bits = [escape(v) for v in (contact["name"], contact["phone"], contact["email"]) if v]
@@ -200,7 +220,7 @@ def _build_html(notices: list[dict]) -> str:
     <div style="background:#ffffff;padding:0 24px 8px;border-left:1px solid #e5e7eb;
                 border-right:1px solid #e5e7eb;">
       <p style="margin:18px 0 0;font-size:11px;font-weight:700;color:#9ca3af;
-                text-transform:uppercase;letter-spacing:.4px;">세부 내용 (기관명 클릭 시 펼쳐짐)</p>
+                text-transform:uppercase;letter-spacing:.4px;">세부 내용</p>
       {sections}
     </div>
     <div style="background:#ffffff;border-radius:0 0 12px 12px;padding:16px 24px 22px;
