@@ -86,6 +86,11 @@ SITES = {
         "base_url": "https://kiha21.or.kr",
         "crawler": "KihaCrawler",
     },
+    "kha": {
+        "name": "대한병원협회",
+        "base_url": "https://www.kha.or.kr",
+        "crawler": "KhaCrawler",
+    },
     "mpm": {
         "name": "인사혁신처",
         "base_url": "https://www.mpm.go.kr",
