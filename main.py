@@ -27,6 +27,9 @@ from crawlers.kahp_crawler import KahpCrawler
 from crawlers.kiha_crawler import KihaCrawler
 from crawlers.mpm_crawler import MpmCrawler
 from crawlers.kha_crawler import KhaCrawler
+from crawlers.mohw_gosi_crawler import MohwGosiCrawler
+from crawlers.mohw_press_crawler import MohwPressCrawler
+from crawlers.ncc_crawler import NccCrawler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,6 +53,9 @@ ALL_CRAWLERS = {
     "kiha": KihaCrawler,
     "mpm":  MpmCrawler,
     "kha":  KhaCrawler,
+    "mohw_gosi":  MohwGosiCrawler,
+    "mohw_press": MohwPressCrawler,
+    "ncc":  NccCrawler,
 }
 
 

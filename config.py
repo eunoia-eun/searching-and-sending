@@ -96,4 +96,19 @@ SITES = {
         "base_url": "https://www.mpm.go.kr",
         "crawler": "MpmCrawler",
     },
+    "mohw_gosi": {
+        "name": "보건복지부 (고시·훈령·예규)",
+        "base_url": "https://www.mohw.go.kr",
+        "crawler": "MohwGosiCrawler",
+    },
+    "mohw_press": {
+        "name": "보건복지부 (보도자료)",
+        "base_url": "https://www.mohw.go.kr",
+        "crawler": "MohwPressCrawler",
+    },
+    "ncc": {
+        "name": "국립암센터 국가암정보센터",
+        "base_url": "https://www.cancer.go.kr",
+        "crawler": "NccCrawler",
+    },
 }
