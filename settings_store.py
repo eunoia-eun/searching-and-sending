@@ -26,7 +26,7 @@ def _resolve_path() -> str:
     return SETTINGS_PATH
 
 DEFAULT_SETTINGS = {
-    "enabled_sites": ["nhis", "nhis_rule", "moel", "hira", "kdca", "law", "khhi", "kahp", "kiha", "mpm", "kha", "mohw_gosi", "mohw_press", "ncc"],
+    "enabled_sites": ["nhis", "nhis_rule", "moel", "hira", "kdca", "law", "khhi", "kahp", "kiha", "mpm", "kha", "mohw_gosi", "mohw_press", "ncc", "kosha"],
     "keywords": {},  # {site_key: [keyword, ...]} — 포함 키워드. 없는 사이트/빈 리스트 = 필터 없음(전체 통과)
     "exclude_keywords": {},  # {site_key: [keyword, ...]} — 제외 키워드. 하나라도 포함되면 무조건 걸러짐
     "recipients": None,  # None = 아직 커스터마이즈 안 함 -> config.EMAIL_RECIPIENTS 사용

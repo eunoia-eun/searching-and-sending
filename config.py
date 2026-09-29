@@ -111,4 +111,9 @@ SITES = {
         "base_url": "https://www.cancer.go.kr",
         "crawler": "NccCrawler",
     },
+    "kosha": {
+        "name": "한국산업안전보건공단",
+        "base_url": "https://kosha.or.kr",
+        "crawler": "KoshaCrawler",
+    },
 }

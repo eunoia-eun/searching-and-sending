@@ -30,6 +30,7 @@ from crawlers.kha_crawler import KhaCrawler
 from crawlers.mohw_gosi_crawler import MohwGosiCrawler
 from crawlers.mohw_press_crawler import MohwPressCrawler
 from crawlers.ncc_crawler import NccCrawler
+from crawlers.kosha_crawler import KoshaCrawler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +57,7 @@ ALL_CRAWLERS = {
     "mohw_gosi":  MohwGosiCrawler,
     "mohw_press": MohwPressCrawler,
     "ncc":  NccCrawler,
+    "kosha": KoshaCrawler,
 }
 
 
