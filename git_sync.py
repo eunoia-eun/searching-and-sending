@@ -1,15 +1,20 @@
 """
-클라우드에 배포된 관리자 웹페이지(admin_web.py)가 data/settings.json을
-GitHub 저장소와 동기화하기 위한 모듈.
+관리자 웹페이지(admin_web.py)가 설정 변경(data/settings.json,
+.github/workflows/daily.yml)을 GitHub 저장소와 동기화하기 위한 모듈.
 
-로컬 실행(admin.py, admin_web.py를 내 컴퓨터에서 직접 실행, main.py,
-GitHub Actions 등)에서는 CLOUD_SYNC 환경변수가 없으므로 전부 아무 동작도
-하지 않는다 — 기존처럼 로컬 data/settings.json 파일만 그대로 사용.
-
-CLOUD_SYNC=true인 환경(클라우드에 배포된 admin_web.py)에서만:
+CLOUD_SYNC=true인 환경(클라우드에 배포된 admin_web.py)에서는:
 - 별도 디렉터리에 저장소를 클론해두고
-- 읽기 전에 git pull, 쓰기 후에 git commit + push
+- 읽기 전에 git pull(hard reset), 쓰기 후에 git commit + push
 로 GitHub Actions(매일 자동 실행)와 설정을 동기화한다.
+
+CLOUD_SYNC이 없는 로컬 실행(admin_web.py를 내 컴퓨터에서 직접 실행)에서는
+읽기(pull)는 하지 않지만(현재 작업 디렉터리가 곧 최신 상태인 실제 프로젝트
+저장소이고, 매번 fetch하면 관리자 페이지가 느려짐), 쓰기(push)는 현재 작업
+디렉터리에서 직접 git add/commit/push한다(2026-09-30 추가) — 이게 없으면
+로컬 관리자 페이지에서 바꾼 값(특히 발송 시각)이 로컬 디스크에만 남고
+GitHub Actions에는 전혀 반영되지 않아 "저장이 안 되는" 것처럼 보이는
+문제가 있었음. main.py/GitHub Actions 등 읽기 전용 실행에서는 이 모듈이
+아예 호출되지 않으므로 영향 없음.
 """
 import logging
 import os
@@ -76,27 +81,36 @@ def pull():
 
 
 def push(message: str, rel_paths: list[str] | None = None):
-    if not ENABLED:
-        return
+    """설정 변경을 git에 반영. 클라우드 모드는 동기화 전용 클론(SYNC_DIR)에서,
+    로컬 모드는 현재 작업 디렉터리(=실제 프로젝트 저장소)에서 직접 commit+push한다."""
+    repo_dir = SYNC_DIR if ENABLED else "."
+
     for rel_path in (rel_paths or [_SETTINGS_REL_PATH]):
-        _run(["git", "add", rel_path], cwd=SYNC_DIR)
-    diff = _run(["git", "diff", "--cached", "--quiet"], cwd=SYNC_DIR)
+        _run(["git", "add", rel_path], cwd=repo_dir)
+    diff = _run(["git", "diff", "--cached", "--quiet"], cwd=repo_dir)
     if diff.returncode == 0:
         return  # 변경 없음
-    _run(["git", "commit", "-m", message], cwd=SYNC_DIR)
 
-    r = _run(["git", "push", "origin", "HEAD:main"], cwd=SYNC_DIR)
+    commit_r = _run(["git", "commit", "-m", message], cwd=repo_dir)
+    if commit_r.returncode != 0:
+        logger.error("git commit 실패: %s", commit_r.stderr)
+        return
+
+    r = _run(["git", "push", "origin", "HEAD:main"], cwd=repo_dir)
     if r.returncode == 0:
         return
 
-    # 그 사이 원격이 앞서갔을 수 있음 — 최신을 받아 우리 커밋만 그 위에 다시 얹어서 재시도
+    # 그 사이 원격이 앞서갔을 수 있음(예: GitHub Actions 자동 커밋) —
+    # 최신을 받아 우리 커밋만 그 위에 다시 얹어서 재시도
     logger.warning("git push 실패, 재시도: %s", r.stderr)
-    _run(["git", "fetch", "--depth", "1", "origin", "main"], cwd=SYNC_DIR)
-    rb = _run(["git", "rebase", "origin/main"], cwd=SYNC_DIR)
+    fetch_cmd = ["git", "fetch", "--depth", "1", "origin", "main"] if ENABLED \
+        else ["git", "fetch", "origin", "main"]
+    _run(fetch_cmd, cwd=repo_dir)
+    rb = _run(["git", "rebase", "origin/main"], cwd=repo_dir)
     if rb.returncode != 0:
         logger.error("git rebase 실패, 동기화 포기: %s", rb.stderr)
-        _run(["git", "rebase", "--abort"], cwd=SYNC_DIR)
+        _run(["git", "rebase", "--abort"], cwd=repo_dir)
         return
-    r = _run(["git", "push", "origin", "HEAD:main"], cwd=SYNC_DIR)
+    r = _run(["git", "push", "origin", "HEAD:main"], cwd=repo_dir)
     if r.returncode != 0:
         logger.error("git push 재시도 실패: %s", r.stderr)

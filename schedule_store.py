@@ -67,9 +67,12 @@ def apply(hour_kst: int, minute_kst: int, weekday_only: bool = False) -> bool:
     with open(path, "w", encoding="utf-8") as f:
         f.write(new_content)
 
-    if git_sync.ENABLED:
-        git_sync.push(
-            f"실행 시각 변경: 매일{weekday_note} {hour_kst:02d}:{minute_kst:02d} KST [skip ci]",
-            rel_paths=[_WORKFLOW_REL_PATH],
-        )
+    # git_sync.push()는 클라우드 모드는 동기화 클론에서, 로컬 모드는 현재 작업
+    # 디렉터리에서 직접 commit+push한다 — 로컬 실행이라고 건너뛰면 안 됨
+    # (2026-09-30: 이걸 건너뛰어서 로컬 관리자 페이지의 시각 변경이 GitHub에
+    # 반영 안 되던 문제가 있었음)
+    git_sync.push(
+        f"실행 시각 변경: 매일{weekday_note} {hour_kst:02d}:{minute_kst:02d} KST [skip ci]",
+        rel_paths=[_WORKFLOW_REL_PATH],
+    )
     return True
