@@ -23,6 +23,9 @@ def capture(html: str, out_path: str) -> bool:
             browser = p.chromium.launch()
             page = browser.new_page(viewport={"width": 700, "height": 900})
             page.set_content(html, wait_until="load")
+            # <details> 아코디언이 기본 접힘 상태라 그대로 찍으면 세부 내용이 안 보임 —
+            # 발송 이력 기록용 스크린샷은 전체 내용을 남겨야 하므로 전부 펼친 뒤 캡처
+            page.eval_on_selector_all("details", "els => els.forEach(e => e.open = true)")
             page.screenshot(path=out_path, full_page=True)
             browser.close()
         return True
